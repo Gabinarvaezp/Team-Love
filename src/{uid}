@@ -1,0 +1,5 @@
+  {
+    fixedExpenses: [{ name, amount, currency, auto }],
+    debt: { name, total, monthlyPayment, currency, auto, deductedOnPaycheck: "1st" | "15th" },
+    autoSavings: { amount, currency, auto, deductedOnPaycheck: "1st" | "15th" }
+  }

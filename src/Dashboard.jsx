@@ -197,6 +197,45 @@ export default function Dashboard() {
   useEffect(() => {
     localStorage.setItem("goals", JSON.stringify(goals));
   }, [goals]);
+  
+  // Agregar un efecto para cargar datos actualizados al iniciar la aplicación
+  useEffect(() => {
+    // Función para cargar datos
+    const loadData = () => {
+      try {
+        // Cargar datos de localStorage
+        const savedUserData = localStorage.getItem("userData");
+        const savedHistory = localStorage.getItem("history");
+        const savedGoals = localStorage.getItem("goals");
+        
+        if (savedUserData) {
+          setUserData(JSON.parse(savedUserData));
+        }
+        
+        if (savedHistory) {
+          setHistory(JSON.parse(savedHistory));
+        }
+        
+        if (savedGoals) {
+          setGoals(JSON.parse(savedGoals));
+        }
+      } catch (error) {
+        console.error("Error loading data from localStorage:", error);
+      }
+    };
+    
+    // Agregar un event listener para detectar cambios en localStorage de otras pestañas
+    const handleStorageChange = () => {
+      loadData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Cleanup
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []); // Este efecto solo se ejecuta una vez al montar el componente
 
   // Añadir este nuevo efecto después de los otros useEffect
 useEffect(() => {
@@ -363,7 +402,7 @@ const netSavings = Math.max(0, calculatedSavings);
       const newFinancials = calculateCombinedFinancials();
       setCombinedFinancials(newFinancials);
     }
-  }, [history, activeScreen]);
+  }, [history, activeScreen, userData]); // Añadir userData como dependencia
 
   // Calculate progress towards goal
 const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
@@ -378,12 +417,12 @@ const [timeEstimate, setTimeEstimate] = useState({
 });
 
 // Add useEffect to safely calculate time estimate
-useEffect(() => {
+  useEffect(() => {
   if (combinedFinancials && activeScreen === "together") {
     const estimate = calculateEstimatedTime();
     setTimeEstimate(estimate);
   }
-}, [combinedFinancials.savings, goals, activeScreen]);
+}, [combinedFinancials.savings, goals, history, activeScreen]);
 
 // Calculate estimated months to reach goal
 const calculateEstimatedTime = () => {
@@ -2147,7 +2186,20 @@ const calculateEstimatedTime = () => {
               borderRadius="none"
               color={activeScreen === "together" ? palette?.button3 || "blue.500" : "gray.400"}
               _hover={{ bg: "gray.50" }}
-              onClick={() => setActiveScreen("together")}
+              onClick={() => {
+                // Actualizar datos antes de cambiar de pantalla
+                const newFinancials = calculateCombinedFinancials();
+                
+                // Forzar una actualización completa de los datos
+                setUserData({
+                  ...userData,
+                  jorgie: {...userData.jorgie},
+                  gabby: {...userData.gabby}
+                });
+                
+                // Cambiar a la pantalla Together
+                setActiveScreen("together");
+              }}
             >
               <VStack spacing={1}>
                 <FaUsers />
@@ -2425,7 +2477,7 @@ const calculateEstimatedTime = () => {
               </VStack>
             </Button>
               
-                          <Button
+            <Button
                 variant="ghost"
                 py={{base: 4, md: 6}}
                 px={2}
@@ -2433,7 +2485,23 @@ const calculateEstimatedTime = () => {
                 borderRadius="none"
                 color={palette?.button3 || "blue.500"}
                 _hover={{ bg: "gray.50" }}
-                onClick={() => {}} // No-op; ya estamos en Together
+                onClick={() => {
+                  // No hacer nada si ya estamos en Together
+                  if (activeScreen === "together") return;
+                  
+                  // Actualizar datos antes de cambiar de pantalla
+                  const newFinancials = calculateCombinedFinancials();
+                  
+                  // Forzar una actualización completa de los datos
+                  setUserData({
+                    ...userData,
+                    jorgie: {...userData.jorgie},
+                    gabby: {...userData.gabby}
+                  });
+                  
+                  // Cambiar a la pantalla Together
+                  setActiveScreen("together");
+                }}
               >
                 <VStack spacing={1}>
                   <FaUsers size={18} />

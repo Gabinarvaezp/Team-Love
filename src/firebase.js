@@ -1,6 +1,6 @@
 // Firebase configuration
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
@@ -25,6 +25,25 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const rtdb = getDatabase(app);
 const storage = getStorage(app);
+
+// Enable offline persistence for Firestore (helps with connection issues)
+try {
+  enableIndexedDbPersistence(db, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  }).then(() => {
+    console.log("Firebase offline persistence enabled");
+  }).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore persistence failed - multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence not available in this browser');
+    } else {
+      console.error('Firestore persistence error:', err);
+    }
+  });
+} catch (err) {
+  console.warn('Error enabling offline persistence:', err);
+}
 
 // Export the initialized services
 export { app, auth, db, rtdb, storage }; 

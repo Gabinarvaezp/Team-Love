@@ -1,96 +1,141 @@
 import React, { useState, useEffect } from 'react';
-import { ChakraProvider, Box } from '@chakra-ui/react';
+import { onAuthChange, getUserProfile } from './firebaseService';
 import Dashboard from './Dashboard';
 import Login from './Login';
-import { 
-  onAuthChange, 
-  getUserProfile, 
-  addUserProfile, 
-  saveRealTimeData, 
-  subscribeToRealTimeData 
-} from './firebaseService';
+import { ChakraProvider, Box, Text, Alert, AlertIcon, AlertDescription, Button } from '@chakra-ui/react';
+import './App.css';
 
 // Set language to English
 const language = 'en';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Manejar cambios en la conexión
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
-    const unsubscribe = onAuthChange(async (authUser) => {
-      if (authUser) {
-        setUser(authUser);
-        
-        // Obtener perfil del usuario
-        try {
-          const profile = await getUserProfile(authUser.uid);
-          if (profile) {
-            setUserProfile(profile);
-            
-            // Sync to real-time database
-            saveRealTimeData(`users/${authUser.uid}/profile`, profile);
-          } else {
-            // Create default profile if not exists
-            const defaultProfile = {
-              name: authUser.email.split('@')[0],
-              email: authUser.email,
-              uid: authUser.uid,
-              language: language, // Use English by default
-              createdAt: new Date().toISOString()
-            };
-            
-            await addUserProfile(authUser.uid, defaultProfile);
-            setUserProfile(defaultProfile);
-            
-            // Sync to real-time database
-            saveRealTimeData(`users/${authUser.uid}/profile`, defaultProfile);
+    const unsubscribe = onAuthChange(async (firebaseUser) => {
+      setIsLoading(true);
+      
+      try {
+        if (firebaseUser) {
+          let userProfile;
+          
+          try {
+            userProfile = await getUserProfile(firebaseUser.uid);
+          } catch (profileError) {
+            console.error("Error getting user profile:", profileError);
+            // Try to get from localStorage if available
+            const storedUserData = localStorage.getItem('userData');
+            if (storedUserData) {
+              const userData = JSON.parse(storedUserData);
+              userProfile = userData[firebaseUser.uid];
+            }
           }
-        } catch (error) {
-          console.error("Error getting user profile:", error);
+
+          const defaultUser = {
+            userId: firebaseUser.uid, 
+            email: firebaseUser.email,
+            name: userProfile?.name || (firebaseUser.email?.split('@')[0] || "Usuario"),
+            avatar: userProfile?.avatar || "/profile.jpg",
+            currency: userProfile?.currency || "USD"
+          };
+
+          setUser(userProfile || defaultUser);
+        } else {
+          setUser(null);
         }
         
-        // Subscribe to real-time data changes
-        const unsubscribeRealtime = subscribeToRealTimeData(`users/${authUser.uid}`, (data) => {
-          console.log("Real-time data updated:", data);
-          // Update any real-time data in your app state here
-        });
-        
-        setLoading(false);
-      } else {
-        setUser(null);
-        setUserProfile(null);
-        setLoading(false);
+        setError(null);
+      } catch (err) {
+        console.error("Authentication error:", err);
+        setError("Error de autenticación. Por favor recarga la página.");
+      } finally {
+        setIsLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
-  const handleLogin = (authUser) => {
-    setUser(authUser);
-  };
-
-  if (loading) {
+  // Si está cargando, mostrar un indicador
+  if (isLoading) {
     return (
       <ChakraProvider>
-        <Box display="flex" alignItems="center" justifyContent="center" h="100vh">
-          Loading...
+        <Box 
+          display="flex" 
+          justifyContent="center" 
+          alignItems="center" 
+          height="100vh"
+          flexDirection="column"
+        >
+          <Text fontSize="2xl" mb={4}>Cargando...</Text>
         </Box>
       </ChakraProvider>
     );
   }
 
+  // Si hay error, mostrar mensaje de error
+  if (error) {
+    return (
+      <ChakraProvider>
+        <Box 
+          display="flex" 
+          justifyContent="center" 
+          alignItems="center" 
+          height="100vh"
+          flexDirection="column"
+          p={4}
+        >
+          <Alert status="error" mb={4} borderRadius="md">
+            <AlertIcon />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+          <Button
+            onClick={() => window.location.reload()}
+            colorScheme="blue"
+          >
+            Reintentar
+          </Button>
+        </Box>
+      </ChakraProvider>
+    );
+  }
+
+  // Advertencia de modo offline
+  const OfflineAlert = () => (
+    isOffline && (
+      <Alert status="warning" position="fixed" top="0" left="0" right="0" zIndex="1000">
+        <AlertIcon />
+        <AlertDescription>
+          Estás en modo sin conexión. Algunos cambios no se sincronizarán hasta que vuelvas a estar en línea.
+        </AlertDescription>
+      </Alert>
+    )
+  );
+
   return (
     <ChakraProvider>
+      <OfflineAlert />
       {user ? (
-        <Dashboard 
-          initialUser={userProfile} 
-          firebaseUser={user} 
-        />
+        <Dashboard initialUser={user} firebaseUser={user} />
       ) : (
-        <Login onLogin={handleLogin} />
+        <Login />
       )}
     </ChakraProvider>
   );

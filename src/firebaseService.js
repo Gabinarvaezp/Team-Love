@@ -251,15 +251,51 @@ export const getRealTimeData = async (path) => {
 export const subscribeToRealTimeData = (path, callback) => {
   try {
     const dbRef = ref(rtdb, path);
-    const unsubscribe = onValue(dbRef, (snapshot) => {
-      if (snapshot.exists()) {
-        callback(snapshot.val());
-      } else {
-        callback(null);
+    
+    // Definir un manejador de error robusto
+    const errorHandler = (error) => {
+      console.error(`Real-time subscription error for path ${path}:`, error);
+      
+      // Si es un error de "permission-denied", intentar recuperar datos de localStorage
+      if (error.code === 'PERMISSION_DENIED' || error.code === 'permission-denied') {
+        console.warn('Permission denied, trying to use cached data');
+        
+        // Intentar recuperar datos de localStorage según el path
+        try {
+          if (path === 'goals') {
+            const localGoals = localStorage.getItem('goals');
+            if (localGoals) {
+              callback(JSON.parse(localGoals));
+            }
+          } else if (path === 'users') {
+            const userData = localStorage.getItem('userData');
+            if (userData) {
+              callback(JSON.parse(userData));
+            }
+          } else if (path === 'movements') {
+            const history = localStorage.getItem('history');
+            if (history) {
+              callback(JSON.parse(history));
+            }
+          }
+        } catch (e) {
+          console.error('Error retrieving cached data:', e);
+        }
       }
-    }, (error) => {
-      console.error("Real-time subscription error:", error);
-    });
+    };
+    
+    // Suscribirse con manejo de errores
+    const unsubscribe = onValue(
+      dbRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          callback(snapshot.val());
+        } else {
+          callback(null);
+        }
+      },
+      errorHandler
+    );
     
     return unsubscribe;
   } catch (error) {
@@ -304,21 +340,50 @@ export const pushToRealTimeList = async (path, data) => {
 };
 
 export const subscribeToMovements = (callback, userId = null) => {
-  let q;
-  if (userId) {
-    q = query(collection(db, "movements"), where("user", "==", userId));
-  } else {
-    q = collection(db, "movements");
+  try {
+    let q;
+    if (userId) {
+      q = query(collection(db, "movements"), where("user", "==", userId));
+    } else {
+      q = collection(db, "movements");
+    }
+    
+    const unsubscribe = onSnapshot(q, 
+      // Success handler
+      (querySnapshot) => {
+        const movements = [];
+        querySnapshot.forEach((doc) => {
+          movements.push({
+            id: doc.id,
+            ...doc.data()
+          });
+        });
+        callback(movements);
+      },
+      // Error handler
+      (error) => {
+        console.error("Error listening to Firestore movements:", error);
+        
+        // Try to fallback to local data if available
+        try {
+          const localData = localStorage.getItem("history");
+          if (localData) {
+            callback(JSON.parse(localData));
+          } else {
+            callback([]);
+          }
+        } catch (e) {
+          console.error("Fallback to local data failed:", e);
+          callback([]);
+        }
+      }
+    );
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("Failed to setup movements subscription:", error);
+    
+    // Return empty function to prevent errors when unsubscribing
+    return () => {};
   }
-  
-  return onSnapshot(q, (querySnapshot) => {
-    const movements = [];
-    querySnapshot.forEach((doc) => {
-      movements.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    callback(movements);
-  });
 };

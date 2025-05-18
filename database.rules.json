@@ -1,0 +1,21 @@
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null",
+    "movements": {
+      ".read": "auth != null",
+      ".write": "auth != null",
+      "$movement_id": {
+        ".validate": "newData.hasChildren(['type', 'amount', 'user', 'date'])"
+      }
+    },
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "goals": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    }
+  }
+} 

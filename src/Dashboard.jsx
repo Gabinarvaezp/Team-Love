@@ -341,7 +341,7 @@ const netSavings = Math.max(0, calculatedSavings);
   
   // Removing console.log that was causing console spam
     
-  return {
+    return {
     savings: totalCombinedSavings,
     income: totalCombinedIncome,
     expenses: totalCombinedExpenses,
@@ -369,86 +369,51 @@ const netSavings = Math.max(0, calculatedSavings);
 const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   ? Math.min(100, (combinedFinancials.savings / goals.coupleGoal.amount) * 100) 
   : Math.min(100, (combinedFinancials.savings / 30000) * 100);
-      // Calculate estimated months to reach goal
-  const calculateEstimatedTime = () => {
-    // Primero verificar si hay datos de transacciones
-    if (history.length === 0) {
-      // Si no hay historial, usamos un valor fijo mensual de $1,200 USD
-      const defaultMonthlyContribution = 1200; // USD por mes
-      const goalAmount = goals && goals.coupleGoal && goals.coupleGoal.amount ? goals.coupleGoal.amount : 30000;
-      const remainingAmount = Math.max(0, goalAmount - combinedFinancials.savings);
-      
-      if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
-      
-      const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
-      
-      return {
-        months: totalMonths,
-        years: Math.floor(totalMonths / 12),
-        remainingMonths: totalMonths % 12
-      };
-    }
     
-    // Check if goals or goals.coupleGoal exists
-    if (!goals || !goals.coupleGoal) {
-      // Usar un valor predeterminado de 30000 para los cálculos
-      const defaultGoalAmount = 30000;
-      const remainingAmount = Math.max(0, defaultGoalAmount - combinedFinancials.savings);
-      
-      if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
-      
-      // Calcular tasa de ahorro mensual como en el caso normal
-      const monthlySavingsRateJorgie = history
-        .filter(h => h.user === "jorgie" && h.type === "Income")
-        .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0) -
-        history
-        .filter(h => h.user === "jorgie" && h.type === "Expense")
-        .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
-        
-      const monthlySavingsRateGabby = history
-        .filter(h => h.user === "gabby" && h.type === "Income")
-        .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0) -
-        history
-        .filter(h => h.user === "gabby" && h.type === "Expense")
-        .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
-        
-      // Verificar si hay suficientes datos para un cálculo significativo
-      if (monthlySavingsRateJorgie === 0 && monthlySavingsRateGabby === 0) {
-        // Si no hay suficientes datos, usar un valor fijo mensual
-        const defaultMonthlyContribution = 1200; // USD por mes
-        const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
-        
-        return {
-          months: totalMonths,
-          years: Math.floor(totalMonths / 12),
-          remainingMonths: totalMonths % 12
-        };
-      }
-      
-      const combinedMonthlySavings = Math.max(1200, monthlySavingsRateJorgie + monthlySavingsRateGabby);
-      
-      // Si los ahorros mensuales son solo el valor mínimo, usar el valor fijo
-      if (combinedMonthlySavings <= 100) {
-        const defaultMonthlyContribution = 1200; // USD por mes
-        const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
-        
-        return {
-          months: totalMonths,
-          years: Math.floor(totalMonths / 12),
-          remainingMonths: totalMonths % 12
-        };
-      }
-      
-      const totalMonths = Math.ceil(remainingAmount / combinedMonthlySavings);
-      
-      return {
-        months: totalMonths,
-        years: Math.floor(totalMonths / 12),
-        remainingMonths: totalMonths % 12
-      };
-    }
+// Move timeToGoal calculation to state
+const [timeEstimate, setTimeEstimate] = useState({ 
+  months: 0, 
+  years: 0, 
+  remainingMonths: 0 
+});
+
+// Add useEffect to safely calculate time estimate
+useEffect(() => {
+  if (combinedFinancials && activeScreen === "together") {
+    const estimate = calculateEstimatedTime();
+    setTimeEstimate(estimate);
+  }
+}, [combinedFinancials.savings, goals, activeScreen]);
+
+// Calculate estimated months to reach goal
+const calculateEstimatedTime = () => {
+  // Primero verificar si hay datos de transacciones
+  if (history.length === 0) {
+    // Si no hay historial, usamos un valor fijo mensual de $1,200 USD
+    const defaultMonthlyContribution = 1200; // USD por mes
+    const goalAmount = goals && goals.coupleGoal && goals.coupleGoal.amount ? goals.coupleGoal.amount : 30000;
+    const remainingAmount = Math.max(0, goalAmount - combinedFinancials.savings);
     
-    // El resto de la función sigue igual
+    if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
+    
+    const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
+    
+    return {
+      months: totalMonths,
+      years: Math.floor(totalMonths / 12),
+      remainingMonths: totalMonths % 12
+    };
+  }
+  
+  // Check if goals or goals.coupleGoal exists
+  if (!goals || !goals.coupleGoal) {
+    // Usar un valor predeterminado de 30000 para los cálculos
+    const defaultGoalAmount = 30000;
+    const remainingAmount = Math.max(0, defaultGoalAmount - combinedFinancials.savings);
+    
+    if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
+    
+    // Calcular tasa de ahorro mensual como en el caso normal
     const monthlySavingsRateJorgie = history
       .filter(h => h.user === "jorgie" && h.type === "Income")
       .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0) -
@@ -465,13 +430,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
       
     // Verificar si hay suficientes datos para un cálculo significativo
     if (monthlySavingsRateJorgie === 0 && monthlySavingsRateGabby === 0) {
-      return { months: 0, years: 0, remainingMonths: 0 };
-    }
-    
-    const combinedMonthlySavings = monthlySavingsRateJorgie + monthlySavingsRateGabby;
-    
-    if (combinedMonthlySavings <= 0) {
-      // Si los ahorros mensuales no son positivos, usar valor fijo
+      // Si no hay suficientes datos, usar un valor fijo mensual
       const defaultMonthlyContribution = 1200; // USD por mes
       const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
       
@@ -482,11 +441,19 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
       };
     }
     
-    // Make sure goals.coupleGoal.amount exists and is a number
-    const goalAmount = typeof goals.coupleGoal.amount === 'number' ? goals.coupleGoal.amount : 0;
-    const remainingAmount = goalAmount - combinedFinancials.savings;
+    const combinedMonthlySavings = Math.max(1200, monthlySavingsRateJorgie + monthlySavingsRateGabby);
     
-    if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
+    // Si los ahorros mensuales son solo el valor mínimo, usar el valor fijo
+    if (combinedMonthlySavings <= 100) {
+      const defaultMonthlyContribution = 1200; // USD por mes
+      const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
+      
+      return {
+        months: totalMonths,
+        years: Math.floor(totalMonths / 12),
+        remainingMonths: totalMonths % 12
+      };
+    }
     
     const totalMonths = Math.ceil(remainingAmount / combinedMonthlySavings);
     
@@ -495,9 +462,56 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
       years: Math.floor(totalMonths / 12),
       remainingMonths: totalMonths % 12
     };
-  };
+  }
   
-  const timeToGoal = calculateEstimatedTime();
+  // El resto de la función sigue igual
+  const monthlySavingsRateJorgie = history
+    .filter(h => h.user === "jorgie" && h.type === "Income")
+    .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0) -
+    history
+    .filter(h => h.user === "jorgie" && h.type === "Expense")
+    .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+    
+  const monthlySavingsRateGabby = history
+    .filter(h => h.user === "gabby" && h.type === "Income")
+    .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0) -
+    history
+    .filter(h => h.user === "gabby" && h.type === "Expense")
+    .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+    
+  // Verificar si hay suficientes datos para un cálculo significativo
+  if (monthlySavingsRateJorgie === 0 && monthlySavingsRateGabby === 0) {
+    return { months: 0, years: 0, remainingMonths: 0 };
+  }
+  
+  const combinedMonthlySavings = monthlySavingsRateJorgie + monthlySavingsRateGabby;
+  
+  if (combinedMonthlySavings <= 0) {
+    // Si los ahorros mensuales no son positivos, usar valor fijo
+    const defaultMonthlyContribution = 1200; // USD por mes
+    const totalMonths = Math.ceil(remainingAmount / defaultMonthlyContribution);
+    
+    return {
+      months: totalMonths,
+      years: Math.floor(totalMonths / 12),
+      remainingMonths: totalMonths % 12
+    };
+  }
+  
+  // Make sure goals.coupleGoal.amount exists and is a number
+  const goalAmount = typeof goals.coupleGoal.amount === 'number' ? goals.coupleGoal.amount : 0;
+  const remainingAmount = goalAmount - combinedFinancials.savings;
+  
+  if (remainingAmount <= 0) return { months: 0, years: 0, remainingMonths: 0 };
+  
+  const totalMonths = Math.ceil(remainingAmount / combinedMonthlySavings);
+  
+  return {
+    months: totalMonths,
+    years: Math.floor(totalMonths / 12),
+    remainingMonths: totalMonths % 12
+  };
+};
   
   // Function to generate monthly data for the chart
   function getMonthlyData() {
@@ -2128,31 +2142,17 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
               
             <Button
               variant="ghost"
-  py={6}
-  flex={1}
-  borderRadius="none"
-  color={activeScreen === "together" ? palette?.button3 || "blue.500" : "gray.400"}
-  _hover={{ bg: "gray.50" }}
-  onClick={() => {
-    // Actualizar datos antes de cambiar de pantalla
-    const newFinancials = calculateCombinedFinancials();
-    // Removing console.log that was causing console spam
-    
-    // Forzar una actualización completa de los datos
-    setUserData({
-      ...userData,
-      jorgie: {...userData.jorgie},
-      gabby: {...userData.gabby}
-    });
-    
-    // Cambiar a la pantalla Together
-    setActiveScreen("together");
-  }}
->
-  <VStack spacing={1}>
-    <FaUsers />
-    <Text fontSize="xs">Together</Text>
-  </VStack>
+              py={6}
+              flex={1}
+              borderRadius="none"
+              color={activeScreen === "together" ? palette?.button3 || "blue.500" : "gray.400"}
+              _hover={{ bg: "gray.50" }}
+              onClick={() => setActiveScreen("together")}
+            >
+              <VStack spacing={1}>
+                <FaUsers />
+                <Text fontSize="xs">Together</Text>
+              </VStack>
             </Button>
               
             <Button
@@ -2282,8 +2282,8 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                   <VStack align="start" spacing={1}>
                     <Text color="gray.500" fontSize="sm">Time to Goal</Text>
                     <Text fontWeight="bold" fontSize={{base: "lg", md: "xl"}} color="#2D3748">
-                      {timeToGoal.years > 0 ? `${timeToGoal.years}y ` : ""}
-                      {timeToGoal.remainingMonths}m
+                      {timeEstimate.years > 0 ? `${timeEstimate.years}y ` : ""}
+                      {timeEstimate.remainingMonths}m
                     </Text>
                     <HStack>
                       <FaCalendarAlt color="#3182CE" />
@@ -2315,7 +2315,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                   <Text fontWeight="bold" color="blue.600" fontSize={{base: "md", md: "lg"}}>
                     ${formatNumber(
                       Math.max(0, goals && goals.coupleGoal && goals.coupleGoal.amount ? goals.coupleGoal.amount - combinedFinancials.savings : 30000 - combinedFinancials.savings) / 
-                      Math.max(1, timeToGoal.months || 24), 
+                      Math.max(1, timeEstimate.months || 24), 
                       "USD"
                     )}/mo
                   </Text>
@@ -2422,10 +2422,10 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                 <VStack spacing={1}>
                   <FaHome size={18} />
                   <Text fontSize="xs">Home</Text>
-                </VStack>
-              </Button>
+              </VStack>
+            </Button>
               
-              <Button
+                          <Button
                 variant="ghost"
                 py={{base: 4, md: 6}}
                 px={2}
@@ -2433,12 +2433,13 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                 borderRadius="none"
                 color={palette?.button3 || "blue.500"}
                 _hover={{ bg: "gray.50" }}
+                onClick={() => {}} // No-op; ya estamos en Together
               >
                 <VStack spacing={1}>
                   <FaUsers size={18} />
                   <Text fontSize="xs">Together</Text>
-                </VStack>
-              </Button>
+              </VStack>
+            </Button>
               
               <Button
                 variant="ghost"

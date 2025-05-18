@@ -1,4 +1,3 @@
-// ConfigModal.jsx
 import React, { useState, useEffect } from "react";
 import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter,
@@ -13,17 +12,16 @@ const CHEQUES = [
   { value: "both", label: "Both Checks" }
 ];
 
-export default function ConfigModal({ isOpen, onClose, data, onSave, canEdit }) {
+export default function ConfigModal({ isOpen, onClose, data, onSave, canEdit = true }) {
   const [savingsAccounts, setSavingsAccounts] = useState([]);
   const [debts, setDebts] = useState([]);
 
   useEffect(() => {
-    setSavingsAccounts(data.savingsAccounts || []);
-    setDebts(data.debts || []);
+    setSavingsAccounts(data?.savingsAccounts || []);
+    setDebts(data?.debts || []);
   }, [data]);
 
   const handleInput = (setter, idx, field, value, arr) => {
-    if (value === "0" && arr[idx][field] === 0) value = "";
     setter(arr =>
       arr.map((a, i) =>
         i === idx
@@ -65,10 +63,10 @@ export default function ConfigModal({ isOpen, onClose, data, onSave, canEdit }) 
   };
 
   const handleSave = () => {
-    onSave(
-      savingsAccounts.map(a => ({ ...a, amount: Number(a.amount), perCheck: Number(a.perCheck) })),
-      debts.map(d => ({ ...d, total: Number(d.total), monthlyPayment: Number(d.monthlyPayment) }))
-    );
+    onSave({
+      savingsAccounts: savingsAccounts.map(a => ({ ...a, amount: Number(a.amount), perCheck: Number(a.perCheck) })),
+      debts: debts.map(d => ({ ...d, total: Number(d.total), monthlyPayment: Number(d.monthlyPayment) }))
+    });
     onClose();
   };
 
@@ -78,7 +76,7 @@ export default function ConfigModal({ isOpen, onClose, data, onSave, canEdit }) 
       <ModalContent borderRadius="2xl" p={2}>
         <ModalHeader textAlign="center" bg="#F0F8FF" borderTopRadius="2xl">
           <VStack spacing={2}>
-            {data.avatar && (
+            {data?.avatar && (
               <Avatar
                 src={data.avatar}
                 size="xl"

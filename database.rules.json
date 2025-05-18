@@ -1,6 +1,6 @@
 {
   "rules": {
-    ".read": "auth != null || (now < 1735689600000)",  // Hasta 31 de diciembre de 2025
+    ".read": "auth != null || (now < 1735689600000)",
     ".write": "auth != null",
     "movements": {
       ".read": "auth != null || (now < 1735689600000)",

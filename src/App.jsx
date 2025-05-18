@@ -4,6 +4,7 @@ import Dashboard from './Dashboard';
 import Login from './Login';
 import { ChakraProvider, Box, Text, Alert, AlertIcon, AlertDescription, Button, Spinner, VStack } from '@chakra-ui/react';
 import './App.css';
+import { diagnoseFirebaseConnection } from './firebaseUtils';
 
 // Set language to English
 const language = 'en';
@@ -15,6 +16,7 @@ function App() {
   const [error, setError] = useState(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
+  const [diagnosticResults, setDiagnosticResults] = useState(null);
 
   // Manejar cambios en la conexión
   useEffect(() => {
@@ -22,9 +24,15 @@ function App() {
       console.log('Aplicación en línea');
       setIsOffline(false);
       
-      // Si tenemos un error, intentar reconectar
-      if (error && !authInitialized) {
+      // Si tenemos un error, intentar reconectar y ejecutar diagnóstico
+      if (error || !authInitialized) {
         setConnectionAttempt(prev => prev + 1);
+        
+        // Ejecutar diagnóstico cuando volvemos a estar online
+        diagnoseFirebaseConnection().then(results => {
+          setDiagnosticResults(results);
+          console.log('Diagnóstico de reconexión:', results);
+        });
       }
     };
     
@@ -41,6 +49,22 @@ function App() {
       window.removeEventListener('offline', handleOffline);
     };
   }, [error, authInitialized]);
+
+  // Ejecutar diagnóstico al inicio
+  useEffect(() => {
+    if (connectionAttempt === 0) {
+      diagnoseFirebaseConnection().then(results => {
+        setDiagnosticResults(results);
+        console.log('Diagnóstico inicial:', results);
+        
+        // Si hay errores y estamos online, intentar reconectar
+        if (results.errors.length > 0 && navigator.onLine) {
+          console.log('Problemas detectados, intentando reconectar...');
+          setTimeout(() => setConnectionAttempt(prev => prev + 1), 2000);
+        }
+      });
+    }
+  }, [connectionAttempt]);
 
   // Intentar cargar datos de usuario desde localStorage si estamos offline
   useEffect(() => {
@@ -96,8 +120,14 @@ function App() {
         console.warn('Tiempo de espera de autenticación excedido');
         setError('Tiempo de espera excedido. Verifica tu conexión e intenta de nuevo.');
         setIsLoading(false);
+        
+        // Ejecutar diagnóstico para identificar el problema
+        diagnoseFirebaseConnection().then(results => {
+          setDiagnosticResults(results);
+          console.log('Diagnóstico tras timeout:', results);
+        });
       }
-    }, 20000); // 20 segundos de timeout
+    }, 15000); // Reducido a 15 segundos
     
     const unsubscribe = onAuthChange(async (firebaseUser) => {
       setIsLoading(true);
@@ -108,11 +138,32 @@ function App() {
         setAuthInitialized(true);
         
         if (firebaseUser) {
+          // Guardar datos básicos de usuario en localStorage para uso offline
+          try {
+            localStorage.setItem('user_session', JSON.stringify({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              lastLogin: new Date().toISOString()
+            }));
+          } catch (e) {
+            console.warn('Error guardando sesión en localStorage:', e);
+          }
+          
           let userProfile;
           
           try {
             userProfile = await getUserProfile(firebaseUser.uid);
             console.log('Perfil de usuario obtenido');
+            
+            // Guardar perfil en localStorage para uso offline
+            try {
+              const storedData = localStorage.getItem('userData') || '{}';
+              const userData = JSON.parse(storedData);
+              userData[firebaseUser.uid] = userProfile;
+              localStorage.setItem('userData', JSON.stringify(userData));
+            } catch (e) {
+              console.warn('Error guardando perfil en localStorage:', e);
+            }
           } catch (profileError) {
             console.error("Error obteniendo perfil:", profileError);
             
@@ -146,6 +197,12 @@ function App() {
       } catch (err) {
         console.error("Error de autenticación:", err);
         setError("Error de autenticación. Verifica tu conexión e intenta de nuevo.");
+        
+        // Ejecutar diagnóstico para identificar el problema
+        diagnoseFirebaseConnection().then(results => {
+          setDiagnosticResults(results);
+          console.log('Diagnóstico tras error de auth:', results);
+        });
       } finally {
         setIsLoading(false);
       }
@@ -207,58 +264,54 @@ function App() {
               <Alert status="warning" borderRadius="md">
                 <AlertIcon />
                 <AlertDescription>
-                  No hay conexión a internet. Verifica tu conexión e intenta de nuevo.
+                  Estás en modo sin conexión. Algunos datos podrían no estar disponibles.
                 </AlertDescription>
               </Alert>
             )}
             
-            <Button
-              onClick={() => window.location.reload()}
-              colorScheme="blue"
-              width="100%"
+            <Button 
+              colorScheme="blue" 
+              onClick={() => {
+                setConnectionAttempt(prev => prev + 1);
+                setError(null);
+                setIsLoading(true);
+              }}
             >
               Reintentar
             </Button>
             
-            {isOffline && (
-              <Button
-                onClick={() => {
-                  try {
-                    const sessionData = localStorage.getItem('user_session');
-                    if (sessionData) {
-                      const userData = JSON.parse(sessionData);
-                      setUser({
-                        ...userData,
-                        offlineMode: true
-                      });
-                      setError(null);
-                    } else {
-                      alert('No hay datos guardados localmente para continuar en modo offline');
+            <Button 
+              variant="outline"
+              onClick={() => {
+                // Ejecutar diagnóstico manualmente
+                setIsLoading(true);
+                diagnoseFirebaseConnection()
+                  .then(results => {
+                    setDiagnosticResults(results);
+                    console.log('Diagnóstico manual:', results);
+                    // Mostrar resultados en la consola para facilitar la depuración
+                    if (results.errors.length > 0) {
+                      console.warn('Problemas detectados en la conexión Firebase:', results.errors);
                     }
-                  } catch (e) {
-                    console.error('Error cargando modo offline:', e);
-                    alert('Error al cargar modo offline');
-                  }
-                }}
-                colorScheme="orange"
-                width="100%"
-              >
-                Continuar en modo offline
-              </Button>
-            )}
+                  })
+                  .finally(() => setIsLoading(false));
+              }}
+            >
+              Diagnosticar problema
+            </Button>
           </VStack>
         </Box>
       </ChakraProvider>
     );
   }
 
-  // Advertencia de modo offline
+  // Display de la aplicación normal
   const OfflineAlert = () => (
     isOffline && (
-      <Alert status="warning" position="fixed" top="0" left="0" right="0" zIndex="1000">
+      <Alert status="warning" position="fixed" bottom="0" width="100%" zIndex="banner">
         <AlertIcon />
         <AlertDescription>
-          Estás en modo sin conexión. Los cambios se guardarán localmente y se sincronizarán cuando vuelvas a estar en línea.
+          Sin conexión a Internet. Los cambios se guardarán cuando vuelva la conexión.
         </AlertDescription>
       </Alert>
     )
@@ -266,9 +319,11 @@ function App() {
 
   return (
     <ChakraProvider>
-      <OfflineAlert />
       {user ? (
-        <Dashboard initialUser={user} firebaseUser={user} isOffline={isOffline} />
+        <>
+          <Dashboard user={user} isOffline={isOffline} />
+          <OfflineAlert />
+        </>
       ) : (
         <Login />
       )}

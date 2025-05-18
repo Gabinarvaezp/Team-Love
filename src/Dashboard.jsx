@@ -32,7 +32,7 @@ import {
   updateRealTimeData,
   subscribeToRealTimeData,
   pushToRealTimeList,
-  removeFromRealTimeData
+  removeRealTimeData
 } from './firebaseService';
 
 // Constants
@@ -767,7 +767,7 @@ const calculateEstimatedTime = () => {
     deleteMovement(id)
       .then(() => {
         // Also remove from Realtime Database
-        removeFromRealTimeData(`movements/${id}`)
+        removeRealTimeData(`movements/${id}`)
           .catch(error => {
             console.error("Error removing movement from Realtime Database:", error);
           });

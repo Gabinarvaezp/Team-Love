@@ -14,7 +14,7 @@ import {
   FaPlus, FaMinus, FaHistory, FaDownload, FaTrash, FaUser,
   FaHome, FaExclamationTriangle, FaChartLine, FaUsers,
   FaArrowUp, FaArrowDown, FaPiggyBank, FaCreditCard, FaCalendarAlt,
-  FaInfoCircle, FaCheckCircle, FaExchangeAlt, FaSync
+  FaInfoCircle, FaCheckCircle, FaExchangeAlt, FaSync, FaSignOutAlt
 } from "react-icons/fa";
 import { 
   PieChart, Pie, Cell, Tooltip as PieTooltip, ResponsiveContainer,
@@ -22,6 +22,18 @@ import {
 } from "recharts";
 import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  addMovement, 
+  deleteMovement, 
+  getMovements, 
+  subscribeToMovements,
+  logoutUser,
+  saveRealTimeData,
+  updateRealTimeData,
+  subscribeToRealTimeData,
+  pushToRealTimeList,
+  removeFromRealTimeData
+} from './firebaseService';
 
 // Constants
 const COP_TO_USD = 0.00025; // 4000 COP = 1 USD aproximadamente
@@ -112,42 +124,29 @@ function formatNumber(num, currency) {
     ? num.toLocaleString("es-CO", { maximumFractionDigits: 0 }) 
     : num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-export default function Dashboard() {
+
+export default function Dashboard({ initialUser, firebaseUser }) {
   // All useState hooks at the top level
-  const [activeScreen, setActiveScreen] = useState("login"); // login, dashboard, together
-  const [activeUser, setActiveUser] = useState(null);
+  const [activeScreen, setActiveScreen] = useState("dashboard"); // login, dashboard, together
+  const [activeUser, setActiveUser] = useState(initialUser ? initialUser.userId : null);
   // Agregar un estado para controlar si está cargando
   const [isLoading, setIsLoading] = useState(false);
   const [userData, setUserData] = useState(() => {
-    const saved = localStorage.getItem("userData");
-    return saved ? JSON.parse(saved) : {
-      jorgie: {
-        name: "Jorgie",
-        avatar: "/hubby.jpg",
-        currency: "USD",
-        savingsAccounts: [],
-        debts: [],
-        savings: 0,
-        debtsTotal: 0,
-        budget: 0,
-      },
-      gabby: {
-        name: "Gabby",
-        avatar: "/wifey.jpg",
-        currency: "COP",
-        savingsAccounts: [],
-        debts: [],
-        savings: 0,
-        debtsTotal: 0,
-        budget: 0,
+    return {
+      [initialUser?.userId]: {
+        name: initialUser?.name || "Usuario",
+        avatar: initialUser?.avatar || "/profile.jpg",
+        currency: initialUser?.currency || "USD",
+        savingsAccounts: initialUser?.savingsAccounts || [],
+        debts: initialUser?.debts || [],
+        savings: initialUser?.savings || 0,
+        debtsTotal: initialUser?.debtsTotal || 0,
+        budget: initialUser?.budget || 0,
       }
     };
   });
   
-  const [history, setHistory] = useState(() => {
-    const saved = localStorage.getItem("history");
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [history, setHistory] = useState([]);
   
   const [goals, setGoals] = useState(() => {
     const saved = localStorage.getItem("goals");
@@ -211,7 +210,15 @@ export default function Dashboard() {
     // Persistence effects
   useEffect(() => {
     localStorage.setItem("userData", JSON.stringify(userData));
-  }, [userData]);
+    
+    // Sync userData to Firebase Realtime Database if user is logged in
+    if (activeUser) {
+      saveRealTimeData(`users/${activeUser}/profile`, userData[activeUser])
+        .catch(error => {
+          console.error("Error syncing user data to Firebase:", error);
+        });
+    }
+  }, [userData, activeUser]);
 
   useEffect(() => {
     localStorage.setItem("history", JSON.stringify(history));
@@ -219,47 +226,104 @@ export default function Dashboard() {
 
   useEffect(() => {
     localStorage.setItem("goals", JSON.stringify(goals));
-  }, [goals]);
+    
+    // Sync goals to Firebase Realtime Database
+    if (activeUser) {
+      saveRealTimeData('goals', goals)
+        .catch(error => {
+          console.error("Error syncing goals to Firebase:", error);
+        });
+    }
+  }, [goals, activeUser]);
   
-  // Agregar un efecto para cargar datos actualizados al iniciar la aplicación
+  // Subscribe to real-time updates from other users
   useEffect(() => {
-    // Función para cargar datos
-    const loadData = () => {
-      try {
-        // Cargar datos de localStorage
-        const savedUserData = localStorage.getItem("userData");
-        const savedHistory = localStorage.getItem("history");
-        const savedGoals = localStorage.getItem("goals");
-        
-        if (savedUserData) {
-          setUserData(JSON.parse(savedUserData));
+    if (activeUser) {
+      // Subscribe to goals updates
+      const goalsUnsubscribe = subscribeToRealTimeData('goals', (data) => {
+        if (data) {
+          setGoals(data);
         }
-        
-        if (savedHistory) {
-          setHistory(JSON.parse(savedHistory));
+      });
+      
+      // Subscribe to other users' profiles
+      const usersUnsubscribe = subscribeToRealTimeData('users', (data) => {
+        if (data) {
+          // Merge with local userData
+          const updatedUserData = { ...userData };
+          
+          // Update all users except the active one (we handle that separately)
+          Object.keys(data).forEach(userId => {
+            if (userId !== activeUser && data[userId].profile) {
+              updatedUserData[userId] = data[userId].profile;
+            }
+          });
+          
+          setUserData(updatedUserData);
         }
-        
-        if (savedGoals) {
-          setGoals(JSON.parse(savedGoals));
+      });
+      
+      return () => {
+        goalsUnsubscribe();
+        usersUnsubscribe();
+      };
+    }
+  }, [activeUser]);
+  
+  // Cargar movimientos desde Firebase
+  useEffect(() => {
+    if (activeUser) {
+      setIsLoading(true);
+      // Subscribe to movements from Firestore
+      const firestoreUnsubscribe = subscribeToMovements((movements) => {
+        setHistory(movements);
+        setIsLoading(false);
+      });
+      
+      // Subscribe to real-time movements from Realtime Database
+      const rtdbUnsubscribe = subscribeToRealTimeData('movements', (data) => {
+        if (data) {
+          // Convert object to array
+          const rtdbMovements = Object.entries(data).map(([id, movement]) => ({
+            id,
+            ...movement
+          }));
+          
+          // Merge with existing Firestore movements
+          // Only add movements that don't already exist in history
+          const existingIds = new Set(history.map(m => m.id));
+          const newMovements = rtdbMovements.filter(m => !existingIds.has(m.id));
+          
+          if (newMovements.length > 0) {
+            setHistory(prevHistory => [...prevHistory, ...newMovements]);
+          }
         }
-      } catch (error) {
-        console.error("Error loading data from localStorage:", error);
-      }
-    };
-    
-    // Agregar un event listener para detectar cambios en localStorage de otras pestañas
-    const handleStorageChange = () => {
-      loadData();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Cleanup
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []); // Este efecto solo se ejecuta una vez al montar el componente
-
+      });
+      
+      return () => {
+        firestoreUnsubscribe();
+        rtdbUnsubscribe();
+      };
+    }
+  }, [activeUser]);
+  
+  // Manejador para cerrar sesión
+  const handleLogout = async () => {
+    try {
+      await logoutUser();
+      setActiveUser(null);
+      setActiveScreen("login");
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+      toast({
+        title: "Error al cerrar sesión",
+        status: "error",
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+  
   // Añadir este nuevo efecto después de los otros useEffect
 useEffect(() => {
   if (activeScreen === "together") {
@@ -423,8 +487,8 @@ useEffect(() => {
   totalCombinedSavings = Math.max(0, totalCombinedSavings || 0);
   totalCombinedIncome = Math.max(0, totalCombinedIncome || 0);
   totalCombinedExpenses = Math.max(0, totalCombinedExpenses || 0);
-  
-  return {
+    
+    return {
     savings: totalCombinedSavings,
     income: totalCombinedIncome,
     expenses: totalCombinedExpenses,
@@ -699,79 +763,34 @@ const calculateEstimatedTime = () => {
     }
   }, [budget, totalExpenses]);
     // Event handlers
-  function handleDeleteMovement(idx) {
-  const item = userHistory[idx];
-  if (!item) return;
-  
-  // Find the index in the original history
-  const historyIndex = history.findIndex(h => h.user === activeUser && h === item);
-  if (historyIndex === -1) return;
-  
-  // Create a new copy of the array
-  const newHistory = [...history];
-  newHistory.splice(historyIndex, 1);
-
-  // Recalculate savings for both users in their respective currencies
-  // For Jorgie (USD)
-  let jorgieHistory = newHistory.filter(h => h.user === "jorgie");
-  let jorgieTotalUSD = 0;
-  
-  jorgieHistory.forEach(h => {
-    // Convert all amounts to USD since Jorgie uses USD
-    const amountInUSD = convertToUSD(h.amount, h.currency);
-    
-    if (h.type === "Income" || h.type === "Savings") {
-      jorgieTotalUSD += amountInUSD;
-    } else if (h.type === "Expense") {
-      jorgieTotalUSD -= amountInUSD;
-    }
-  });
-  
-  // For Gabby (COP)
-  let gabbyHistory = newHistory.filter(h => h.user === "gabby");
-  let gabbyTotalCOP = 0;
-  
-  gabbyHistory.forEach(h => {
-    // Calculate the amount in COP
-    let amountInCOP;
-    if (h.currency === "COP") {
-      amountInCOP = h.amount;
-    } else { // Si es USD
-      amountInCOP = convertToCOP(h.amount, "USD");
-    }
-    
-    if (h.type === "Income" || h.type === "Savings") {
-      gabbyTotalCOP += amountInCOP;
-    } else if (h.type === "Expense") {
-      gabbyTotalCOP -= amountInCOP;
-    }
-  });
-  
-  // Ensure the values are not negative
-  jorgieTotalUSD = Math.max(0, jorgieTotalUSD);
-  gabbyTotalCOP = Math.max(0, gabbyTotalCOP);
-  
-  // Update history and totals for both users
-  setHistory(newHistory);
-  setUserData(prev => ({
-    ...prev,
-    jorgie: {
-      ...prev.jorgie,
-      savings: jorgieTotalUSD
-    },
-    gabby: {
-      ...prev.gabby, 
-      savings: gabbyTotalCOP
-    }
-  }));
-  
-  toast({ 
-    title: "Movement deleted",
-    status: "success",
-    duration: 3000,
-    isClosable: true,
-  });
-}
+  function handleDeleteMovement(id) {
+    deleteMovement(id)
+      .then(() => {
+        // Also remove from Realtime Database
+        removeFromRealTimeData(`movements/${id}`)
+          .catch(error => {
+            console.error("Error removing movement from Realtime Database:", error);
+          });
+        
+        toast({
+          title: "Success",
+          description: "Transaction deleted successfully",
+          status: "success",
+          duration: 2000,
+          isClosable: true
+        });
+      })
+      .catch(error => {
+        console.error("Error deleting movement:", error);
+        toast({
+          title: "Error",
+          description: "Failed to delete transaction",
+          status: "error",
+          duration: 3000,
+          isClosable: true
+        });
+      });
+  }
 
   function handleExportExcel() {
     const rows = userHistory.map((item, idx) => ({
@@ -873,41 +892,75 @@ const calculateEstimatedTime = () => {
       paymentMethod: addData.paymentMethod,
       date: addData.date || todayStr(),
       type: "Expense",
-      user: activeUser
+      user: activeUser,
+      userEmail: firebaseUser.email,
+      timestamp: new Date().toISOString()
     };
     
-    setHistory(prev => [movement, ...prev]);
-    
-    // Update user data with the expense
-    setUserData(prev => {
-      // Convert expense to user's currency
-      const userCurrency = prev[activeUser].currency || "USD";
-      let amountInUserCurrency = amount;
-      
-      if (addData.currency !== userCurrency) {
-        if (userCurrency === "USD") {
-          amountInUserCurrency = convertToUSD(amount, addData.currency);
-        } else {
-          // Convert to COP
-          amountInUserCurrency = convertToCOP(amount, "USD");
-        }
-      }
-      
-      return {
-        ...prev,
-        [activeUser]: {
-          ...prev[activeUser],
-          savings: Math.max(0, (prev[activeUser].savings || 0) - amountInUserCurrency)
-        }
-      };
-    });
-    
-    toast({
-      title: "Expense added!",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
+    setIsLoading(true);
+    addMovement(movement)
+      .then((movementId) => {
+        // Sync to real-time database for instant updates
+        pushToRealTimeList('movements', { 
+          ...movement, 
+          id: movementId 
+        }).catch(error => {
+          console.error("Error syncing movement to Realtime Database:", error);
+        });
+        
+        // Actualizar los datos del usuario
+        setUserData(prev => {
+          // Convert expense to user's currency
+          const userCurrency = prev[activeUser].currency || "USD";
+          let amountInUserCurrency = amount;
+          
+          if (addData.currency !== userCurrency) {
+            if (userCurrency === "USD") {
+              amountInUserCurrency = convertToUSD(amount, addData.currency);
+            } else {
+              // Convert to COP
+              amountInUserCurrency = convertToCOP(amount, "USD");
+            }
+          }
+          
+          const updatedUserData = {
+            ...prev,
+            [activeUser]: {
+              ...prev[activeUser],
+              savings: Math.max(0, (prev[activeUser].savings || 0) - amountInUserCurrency)
+            }
+          };
+          
+          // Sync updated user data to real-time database
+          saveRealTimeData(`users/${activeUser}/profile`, updatedUserData[activeUser])
+            .catch(error => {
+              console.error("Error syncing user data:", error);
+            });
+            
+          return updatedUserData;
+        });
+        
+        toast({
+          title: "Expense added!",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        setIsLoading(false);
+        setShowAddModal(false);
+      })
+      .catch(error => {
+        console.error("Error adding expense:", error);
+        toast({
+          title: "Error",
+          description: "No se pudo agregar el gasto",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsLoading(false);
+      });
   } else if (addTab === 1) {
     // Income
     if (!addData.amount) {
@@ -929,41 +982,75 @@ const calculateEstimatedTime = () => {
       date: addData.date || todayStr(),
       type: "Income",
       user: activeUser,
-      subcategory: addData.source === "Other" ? addData.subcategory : ""
+      userEmail: firebaseUser.email,
+      subcategory: addData.source === "Other" ? addData.subcategory : "",
+      timestamp: new Date().toISOString()
     };
     
-    setHistory(prev => [movement, ...prev]);
-    
-    // Update user data with the income
-    setUserData(prev => {
-      // Convert income to user's currency
-      const userCurrency = prev[activeUser].currency || "USD";
-      let amountInUserCurrency = amount;
-      
-      if (addData.currency !== userCurrency) {
-        if (userCurrency === "USD") {
-          amountInUserCurrency = convertToUSD(amount, addData.currency);
-        } else {
-          // Convert to COP
-          amountInUserCurrency = convertToCOP(amount, "USD");
-        }
-      }
-      
-      return {
-        ...prev,
-        [activeUser]: {
-          ...prev[activeUser],
-          savings: (prev[activeUser].savings || 0) + amountInUserCurrency
-        }
-      };
-    });
-    
-    toast({
-      title: "Income added!",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
+    setIsLoading(true);
+    addMovement(movement)
+      .then((movementId) => {
+        // Sync to real-time database for instant updates
+        pushToRealTimeList('movements', { 
+          ...movement, 
+          id: movementId 
+        }).catch(error => {
+          console.error("Error syncing movement to Realtime Database:", error);
+        });
+        
+        // Actualizar los datos del usuario
+        setUserData(prev => {
+          // Convert income to user's currency
+          const userCurrency = prev[activeUser].currency || "USD";
+          let amountInUserCurrency = amount;
+          
+          if (addData.currency !== userCurrency) {
+            if (userCurrency === "USD") {
+              amountInUserCurrency = convertToUSD(amount, addData.currency);
+            } else {
+              // Convert to COP
+              amountInUserCurrency = convertToCOP(amount, "USD");
+            }
+          }
+          
+          const updatedUserData = {
+            ...prev,
+            [activeUser]: {
+              ...prev[activeUser],
+              savings: (prev[activeUser].savings || 0) + amountInUserCurrency
+            }
+          };
+          
+          // Sync updated user data to real-time database
+          saveRealTimeData(`users/${activeUser}/profile`, updatedUserData[activeUser])
+            .catch(error => {
+              console.error("Error syncing user data:", error);
+            });
+            
+          return updatedUserData;
+        });
+        
+        toast({
+          title: "Income added!",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        setIsLoading(false);
+        setShowAddModal(false);
+      })
+      .catch(error => {
+        console.error("Error adding income:", error);
+        toast({
+          title: "Error",
+          description: "No se pudo agregar el ingreso",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsLoading(false);
+      });
   } else if (addTab === 2) {
     // Debt
     if (!addData.debtName || !addData.debtTotal) {
@@ -977,46 +1064,7 @@ const calculateEstimatedTime = () => {
     }
     
     const amount = Number(addData.debtTotal);
-    
-    // Agregar a la estructura de datos de usuario
-    setUserData(prev => {
-      // Convert debt to user's currency
-      const userCurrency = prev[activeUser].currency || "USD";
-      let amountInUserCurrency = amount;
-      
-      if (addData.debtCurrency !== userCurrency) {
-        if (userCurrency === "USD") {
-          amountInUserCurrency = convertToUSD(amount, addData.debtCurrency);
-        } else {
-          // Convert to COP
-          amountInUserCurrency = convertToCOP(amount, addData.debtCurrency);
-        }
-      }
-      
-      return {
-        ...prev,
-        [activeUser]: {
-          ...prev[activeUser],
-          debts: [
-            ...(prev[activeUser].debts || []),
-            {
-              name: addData.debtName,
-              total: amount,
-              currency: addData.debtCurrency || "USD",
-              monthlyPayment: Number(addData.debtMonthly) || 0,
-              source: addData.debtSource || INCOME_SOURCES[0],
-              date: todayStr(),
-              isAutomatic: addData.isDebtAutomatic,
-              checkSource: addData.checkSource
-            }
-          ],
-          debtsTotal: (prev[activeUser].debtsTotal || 0) + amountInUserCurrency
-        }
-      };
-    });
-    
-    // Crear un registro en el historial para el debt
-    const debtMovement = {
+    const movement = {
       amount: amount,
       currency: addData.debtCurrency || "USD",
       category: "Debt",
@@ -1024,19 +1072,90 @@ const calculateEstimatedTime = () => {
       date: todayStr(),
       type: "Debt",
       user: activeUser,
+      userEmail: firebaseUser.email,
       isAutomatic: addData.isDebtAutomatic,
       checkSource: addData.checkSource,
-      monthlyPayment: Number(addData.debtMonthly) || 0
+      monthlyPayment: Number(addData.debtMonthly) || 0,
+      timestamp: new Date().toISOString()
     };
     
-    setHistory(prev => [debtMovement, ...prev]);
-    
-    toast({
-      title: "Debt added!",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
+    setIsLoading(true);
+    addMovement(movement)
+      .then((movementId) => {
+        // Sync to real-time database for instant updates
+        pushToRealTimeList('movements', { 
+          ...movement, 
+          id: movementId 
+        }).catch(error => {
+          console.error("Error syncing movement to Realtime Database:", error);
+        });
+        
+        // Actualizar los datos del usuario
+        setUserData(prev => {
+          // Convert debt to user's currency
+          const userCurrency = prev[activeUser].currency || "USD";
+          let amountInUserCurrency = amount;
+          
+          if (addData.debtCurrency !== userCurrency) {
+            if (userCurrency === "USD") {
+              amountInUserCurrency = convertToUSD(amount, addData.debtCurrency);
+            } else {
+              // Convert to COP
+              amountInUserCurrency = convertToCOP(amount, addData.debtCurrency);
+            }
+          }
+          
+          const updatedUserData = {
+            ...prev,
+            [activeUser]: {
+              ...prev[activeUser],
+              debts: [
+                ...(prev[activeUser].debts || []),
+                {
+                  name: addData.debtName,
+                  total: amount,
+                  currency: addData.debtCurrency || "USD",
+                  monthlyPayment: Number(addData.debtMonthly) || 0,
+                  source: addData.debtSource || INCOME_SOURCES[0],
+                  date: todayStr(),
+                  isAutomatic: addData.isDebtAutomatic,
+                  checkSource: addData.checkSource
+                }
+              ],
+              debtsTotal: (prev[activeUser].debtsTotal || 0) + amountInUserCurrency
+            }
+          };
+          
+          // Sync updated user data to real-time database
+          saveRealTimeData(`users/${activeUser}/profile`, updatedUserData[activeUser])
+            .catch(error => {
+              console.error("Error syncing user data:", error);
+            });
+            
+          return updatedUserData;
+        });
+        
+        toast({
+          title: "Debt added!",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        setIsLoading(false);
+        setShowAddModal(false);
+      })
+      .catch(error => {
+        console.error("Error adding debt:", error);
+        toast({
+          title: "Error",
+          description: "No se pudo agregar la deuda",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsLoading(false);
+      });
   } else if (addTab === 3) {
     // Savings Account
     if (!addData.savingWhere || !addData.savingAmount) {
@@ -1050,44 +1169,7 @@ const calculateEstimatedTime = () => {
     }
     
     const amount = Number(addData.savingAmount);
-    // Update user data with the savings
-    setUserData(prev => {
-      // Convert savings to user's currency
-      const userCurrency = prev[activeUser].currency || "USD";
-      let amountInUserCurrency = amount;
-      
-      if (addData.savingCurrency !== userCurrency) {
-        if (userCurrency === "USD") {
-          amountInUserCurrency = convertToUSD(amount, addData.savingCurrency);
-        } else {
-          // Convert to COP - este es el caso importante
-          amountInUserCurrency = convertToCOP(amount, addData.savingCurrency);
-        }
-      }
-      
-      return {
-        ...prev,
-        [activeUser]: {
-          ...prev[activeUser],
-          savingsAccounts: [
-            ...(prev[activeUser].savingsAccounts || []),
-            {
-              where: addData.savingWhere,
-              amount: amount,
-              currency: addData.savingCurrency || "USD",
-              date: todayStr(),
-              monthlySavings: Number(addData.monthlySavings) || 0,
-              isAutomatic: addData.isSavingAutomatic,
-              checkSource: addData.checkSource
-            }
-          ],
-          savings: (prev[activeUser].savings || 0) + amountInUserCurrency
-        }
-      };
-    });
-    
-    // Create history record
-    const savingMovement = {
+    const movement = {
       amount: amount,
       currency: addData.savingCurrency || "USD",
       category: "Savings",
@@ -1095,26 +1177,95 @@ const calculateEstimatedTime = () => {
       date: todayStr(),
       type: "Savings",
       user: activeUser,
+      userEmail: firebaseUser.email,
       isAutomatic: addData.isSavingAutomatic,
       checkSource: addData.checkSource,
-      monthlySavings: Number(addData.monthlySavings) || 0
+      monthlySavings: Number(addData.monthlySavings) || 0,
+      timestamp: new Date().toISOString()
     };
     
-    setHistory(prev => [savingMovement, ...prev]);
-    
-    toast({
-      title: "Savings account added!",
-      status: "success",
-      duration: 3000,
-      isClosable: true,
-    });
+    setIsLoading(true);
+    addMovement(movement)
+      .then((movementId) => {
+        // Sync to real-time database for instant updates
+        pushToRealTimeList('movements', { 
+          ...movement, 
+          id: movementId 
+        }).catch(error => {
+          console.error("Error syncing movement to Realtime Database:", error);
+        });
+        
+        // Actualizar los datos del usuario
+        setUserData(prev => {
+          // Convert savings to user's currency
+          const userCurrency = prev[activeUser].currency || "USD";
+          let amountInUserCurrency = amount;
+          
+          if (addData.savingCurrency !== userCurrency) {
+            if (userCurrency === "USD") {
+              amountInUserCurrency = convertToUSD(amount, addData.savingCurrency);
+            } else {
+              // Convert to COP
+              amountInUserCurrency = convertToCOP(amount, addData.savingCurrency);
+            }
+          }
+          
+          const updatedUserData = {
+            ...prev,
+            [activeUser]: {
+              ...prev[activeUser],
+              savingsAccounts: [
+                ...(prev[activeUser].savingsAccounts || []),
+                {
+                  where: addData.savingWhere,
+                  amount: amount,
+                  currency: addData.savingCurrency || "USD",
+                  date: todayStr(),
+                  monthlySavings: Number(addData.monthlySavings) || 0,
+                  isAutomatic: addData.isSavingAutomatic,
+                  checkSource: addData.checkSource
+                }
+              ],
+              savings: (prev[activeUser].savings || 0) + amountInUserCurrency
+            }
+          };
+          
+          // Sync updated user data to real-time database
+          saveRealTimeData(`users/${activeUser}/profile`, updatedUserData[activeUser])
+            .catch(error => {
+              console.error("Error syncing user data:", error);
+            });
+            
+          return updatedUserData;
+        });
+        
+        toast({
+          title: "Savings account added!",
+          status: "success",
+          duration: 3000,
+          isClosable: true,
+        });
+        
+        setIsLoading(false);
+        setShowAddModal(false);
+      })
+      .catch(error => {
+        console.error("Error adding savings:", error);
+        toast({
+          title: "Error",
+          description: "No se pudo agregar la cuenta de ahorro",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setIsLoading(false);
+      });
   }
   
-  // Reset form and close modal
-  setShowAddModal(false);
+  // Reset form
   setAddData({
     amount: "",
-    currency: currentUser?.currency || "USD",
+    currency: userData[activeUser]?.currency || "USD",
     category: "",
     subcategory: "",
     paymentMethod: PAYMENT_METHODS[0],
@@ -1743,7 +1894,7 @@ const calculateEstimatedTime = () => {
                           size="sm"
                           variant="ghost"
                           colorScheme="red"
-                          onClick={() => handleDeleteMovement(idx)}
+                          onClick={() => handleDeleteMovement(item.id)}
                         />
                       </HStack>
                     </HStack>
@@ -2302,7 +2453,7 @@ const calculateEstimatedTime = () => {
                           size="xs"
                           variant="ghost"
                           colorScheme="red"
-                          onClick={() => handleDeleteMovement(idx)}
+                          onClick={() => handleDeleteMovement(item.id)}
                         />
                       </HStack>
             </HStack>
@@ -2380,13 +2531,10 @@ const calculateEstimatedTime = () => {
                 borderRadius="none"
                 color="gray.400"
                 _hover={{ bg: "gray.50" }}
-                onClick={() => {
-                  setActiveUser(null);
-                  setActiveScreen("login");
-                }}
+                onClick={handleLogout}
               >
                 <VStack spacing={1}>
-                  <Avatar size="xs" src={currentUser.avatar} />
+                  <FaSignOutAlt />
                   <Text fontSize="xs">Log out</Text>
                 </VStack>
             </Button>
@@ -2724,13 +2872,10 @@ const calculateEstimatedTime = () => {
                 borderRadius="none"
                 color="gray.400"
                 _hover={{ bg: "gray.50" }}
-                onClick={() => {
-                  setActiveUser(null);
-                  setActiveScreen("login");
-                }}
+                onClick={handleLogout}
               >
                 <VStack spacing={1}>
-                  <Avatar size="xs" src={currentUser.avatar} />
+                  <FaSignOutAlt />
                   <Text fontSize="xs">Log out</Text>
                 </VStack>
               </Button>

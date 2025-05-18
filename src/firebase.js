@@ -1,20 +1,30 @@
+// Firebase configuration
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
+import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
+// Tu configuración de Firebase
+// Debes reemplazar estos valores con los de tu proyecto en Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyBA4QTs5nHNMW1xR3TYREwqp0GEg8mOE8w",
-  authDomain: "hubby-wifey-finances.firebaseapp.com",
-  projectId: "hubby-wifey-finances",
-  storageBucket: "hubby-wifey-finances.firebasestorage.app",
-  messagingSenderId: "769290841190",
-  appId: "1:769290841190:web:0d8bd2508c324bf60e11a7",
-  measurementId: "G-H5N360C8TY"
+  apiKey: "AIzaSyCqR8DOBCOsNsiycBvJNWd1JQKu73i7VLU",
+  authDomain: "team-love-2dd83.firebaseapp.com",
+  projectId: "team-love-2dd83",
+  storageBucket: "team-love-2dd83.firebasestorage.app",
+  messagingSenderId: "794621460850",
+  appId: "1:794621460850:web:bb9ee5132f1aa638ce9deb",
+  measurementId: "G-0W56K3B12G",
+  databaseURL: "https://team-love-2dd83-default-rtdb.firebaseio.com"
 };
 
-
+// Inicializa Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+
+// Inicializa servicios de Firebase
+const db = getFirestore(app);
+const auth = getAuth(app);
+const rtdb = getDatabase(app);
+const storage = getStorage(app);
+
+export { db, auth, rtdb, storage }; 

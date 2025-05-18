@@ -24,7 +24,8 @@ import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Constants
-const COP_TO_USD = 0.00025; // 1 COP = 0.00025 USD (4000 COP = 1 USD aproximadamente)
+const COP_TO_USD = 0.00025; // 4000 COP = 1 USD aproximadamente
+const USD_TO_COP = 4000; // 1 USD = 4000 COP aproximadamente
 const COLORS = ["#3182ce", "#38a169", "#ecc94b", "#ed8936", "#e53e3e", "#805ad5", "#319795", "#718096"];
 const CATEGORIES = [
   "Food", 
@@ -65,6 +66,23 @@ function convertToUSD(amount, currency) {
     return amount;
   } else if (currency === "COP") {
     return amount * COP_TO_USD; // Multiplicamos por la tasa (1 COP = 0.00025 USD)
+  }
+  
+  // Por defecto, devolver el monto sin cambios
+  return amount;
+}
+
+function convertToCOP(amount, currency) {
+  // Asegurar que amount sea un número
+  if (typeof amount !== "number") {
+    amount = Number(amount) || 0;
+  }
+  
+  // Realizar la conversión apropiada
+  if (currency === "COP") {
+    return amount;
+  } else if (currency === "USD") {
+    return amount * USD_TO_COP; // Multiplicamos por la tasa (1 USD = 4000 COP)
   }
   
   // Por defecto, devolver el monto sin cambios
@@ -312,11 +330,15 @@ useEffect(() => {
   function toDisplayCurrency(amount, currency) {
     if (typeof amount !== 'number') amount = Number(amount) || 0;
     
+    // Si amount ya está en la moneda de visualización, devolverlo sin cambios
+    if (currency === displayCurrency) return amount;
+    
     if (displayCurrency === "USD") {
+      // Convertir cualquier no-USD a USD
       return convertToUSD(amount, currency);
     } else {
-      // Si queremos mostrar en COP
-      return currency === "COP" ? amount : amount / COP_TO_USD; // Dividimos por la tasa para convertir de USD a COP
+      // Queremos mostrar en COP
+      return convertToCOP(amount, currency);
     }
   }
 
@@ -331,35 +353,40 @@ useEffect(() => {
     
   const balance = totalIncome - totalExpenses;
   
-  const calculatedSavings = userHistory
-  .reduce((acc, h) => {
-    if (h.type === "Income") return acc + toDisplayCurrency(h.amount, h.currency);
-    if (h.type === "Expense") return acc - toDisplayCurrency(h.amount, h.currency);
-    return acc;
-  }, 0);
-const netSavings = Math.max(0, calculatedSavings);
+  // This will now just use the user's savings field directly which is more reliable
+  // than trying to recalculate from history
+  const netSavings = toDisplayCurrency(currentUser?.savings || 0, currentUser?.currency || "USD");
     
   const budget = currentUser?.budget || 0;
     // Calculate combined financial data for both users
  const calculateCombinedFinancials = () => {
-  // Removing console.log that was causing console spam
+  // Para evitar valores NaN y asegurar valores numéricos
   let totalCombinedSavings = 0;
   let totalCombinedIncome = 0;
   let totalCombinedExpenses = 0;
   
   // Calculate for Jorgie
   if (userData.jorgie) {
-    // Removing console.log that was causing console spam
-    totalCombinedSavings += convertToUSD(userData.jorgie.savings || 0, userData.jorgie.currency || "USD");
+    // Asegurar que los ahorros de Jorgie estén en USD
+    totalCombinedSavings += Number(userData.jorgie.savings) || 0;
     
     const jorgieHistory = history.filter(h => h.user === "jorgie");
+    
+    // Convertir todos los ingresos a USD
     const jorgieIncome = jorgieHistory
       .filter(h => h.type === "Income")
-      .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+      .reduce((acc, h) => {
+        const amountUSD = convertToUSD(Number(h.amount) || 0, h.currency);
+        return acc + amountUSD;
+      }, 0);
     
+    // Convertir todos los gastos a USD
     const jorgieExpenses = jorgieHistory
       .filter(h => h.type === "Expense")
-      .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+      .reduce((acc, h) => {
+        const amountUSD = convertToUSD(Number(h.amount) || 0, h.currency);
+        return acc + amountUSD;
+      }, 0);
     
     totalCombinedIncome += jorgieIncome;
     totalCombinedExpenses += jorgieExpenses;
@@ -367,25 +394,37 @@ const netSavings = Math.max(0, calculatedSavings);
   
   // Calculate for Gabby
   if (userData.gabby) {
-    // Removing console.log that was causing console spam
-    totalCombinedSavings += convertToUSD(userData.gabby.savings || 0, userData.gabby.currency || "COP");
+    // Convertir los ahorros de Gabby en COP a USD para el total combinado
+    totalCombinedSavings += convertToUSD(Number(userData.gabby.savings) || 0, "COP");
     
     const gabbyHistory = history.filter(h => h.user === "gabby");
+    
+    // Convertir todos los ingresos a USD
     const gabbyIncome = gabbyHistory
       .filter(h => h.type === "Income")
-      .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+      .reduce((acc, h) => {
+        const amountUSD = convertToUSD(Number(h.amount) || 0, h.currency);
+        return acc + amountUSD;
+      }, 0);
     
+    // Convertir todos los gastos a USD
     const gabbyExpenses = gabbyHistory
       .filter(h => h.type === "Expense")
-      .reduce((acc, h) => acc + convertToUSD(h.amount, h.currency), 0);
+      .reduce((acc, h) => {
+        const amountUSD = convertToUSD(Number(h.amount) || 0, h.currency);
+        return acc + amountUSD;
+      }, 0);
     
     totalCombinedIncome += gabbyIncome;
     totalCombinedExpenses += gabbyExpenses;
   }
   
-  // Removing console.log that was causing console spam
-    
-    return {
+  // Asegurar valores no negativos y evitar NaN
+  totalCombinedSavings = Math.max(0, totalCombinedSavings || 0);
+  totalCombinedIncome = Math.max(0, totalCombinedIncome || 0);
+  totalCombinedExpenses = Math.max(0, totalCombinedExpenses || 0);
+  
+  return {
     savings: totalCombinedSavings,
     income: totalCombinedIncome,
     expenses: totalCombinedExpenses,
@@ -403,9 +442,21 @@ const netSavings = Math.max(0, calculatedSavings);
   
   // Recalculamos solo cuando cambia el historial o se cambia de pantalla
   useEffect(() => {
+    // Si es la pantalla Together o hay cambios en el historial
     if (activeScreen === "together" || history.length > 0) {
-      const newFinancials = calculateCombinedFinancials();
-      setCombinedFinancials(newFinancials);
+      try {
+        // Calcular datos financieros combinados
+        const newFinancials = calculateCombinedFinancials();
+        setCombinedFinancials(newFinancials);
+        
+        // Si estamos en la pantalla Together, actualizar también timeEstimate
+        if (activeScreen === "together") {
+          const estimate = calculateEstimatedTime();
+          setTimeEstimate(estimate);
+        }
+      } catch (error) {
+        console.error("Error al actualizar datos combinados:", error);
+      }
     }
   }, [history, activeScreen, userData]); // Añadir userData como dependencia
 
@@ -652,56 +703,69 @@ const calculateEstimatedTime = () => {
   const item = userHistory[idx];
   if (!item) return;
   
-  // Encontrar el índice en el historial original
+  // Find the index in the original history
   const historyIndex = history.findIndex(h => h.user === activeUser && h === item);
   if (historyIndex === -1) return;
   
-  // Crear nueva copia del array
+  // Create a new copy of the array
   const newHistory = [...history];
   newHistory.splice(historyIndex, 1);
+
+  // Recalculate savings for both users in their respective currencies
+  // For Jorgie (USD)
+  let jorgieHistory = newHistory.filter(h => h.user === "jorgie");
+  let jorgieTotalUSD = 0;
   
-  // ACTUALIZADO: Recalcular completamente los ahorros para ambos usuarios
-  let jorgieTotal = 0;
-  let gabbyTotal = 0;
-  
-  // Recalcular desde el historial
-  newHistory.forEach(h => {
-    if (h.user === "jorgie") {
-      if (h.type === "Income" || h.type === "Savings") {
-        jorgieTotal += convertToUSD(h.amount, h.currency);
-      } else if (h.type === "Expense") {
-        jorgieTotal -= convertToUSD(h.amount, h.currency);
-      }
-    } else if (h.user === "gabby") {
-      if (h.type === "Income" || h.type === "Savings") {
-        gabbyTotal += convertToUSD(h.amount, h.currency);
-      } else if (h.type === "Expense") {
-        gabbyTotal -= convertToUSD(h.amount, h.currency);
-      }
+  jorgieHistory.forEach(h => {
+    // Convert all amounts to USD since Jorgie uses USD
+    const amountInUSD = convertToUSD(h.amount, h.currency);
+    
+    if (h.type === "Income" || h.type === "Savings") {
+      jorgieTotalUSD += amountInUSD;
+    } else if (h.type === "Expense") {
+      jorgieTotalUSD -= amountInUSD;
     }
   });
   
-  // Asegurar que los valores no sean negativos
-  jorgieTotal = Math.max(0, jorgieTotal);
-  gabbyTotal = Math.max(0, gabbyTotal);
+  // For Gabby (COP)
+  let gabbyHistory = newHistory.filter(h => h.user === "gabby");
+  let gabbyTotalCOP = 0;
   
-  // Removing console.log that was causing console spam
+  gabbyHistory.forEach(h => {
+    // Calculate the amount in COP
+    let amountInCOP;
+    if (h.currency === "COP") {
+      amountInCOP = h.amount;
+    } else { // Si es USD
+      amountInCOP = convertToCOP(h.amount, "USD");
+    }
+    
+    if (h.type === "Income" || h.type === "Savings") {
+      gabbyTotalCOP += amountInCOP;
+    } else if (h.type === "Expense") {
+      gabbyTotalCOP -= amountInCOP;
+    }
+  });
   
-  // Actualizar el historial y los totales de ambos usuarios
+  // Ensure the values are not negative
+  jorgieTotalUSD = Math.max(0, jorgieTotalUSD);
+  gabbyTotalCOP = Math.max(0, gabbyTotalCOP);
+  
+  // Update history and totals for both users
   setHistory(newHistory);
-    setUserData(prev => ({
-      ...prev,
+  setUserData(prev => ({
+    ...prev,
     jorgie: {
       ...prev.jorgie,
-      savings: jorgieTotal
+      savings: jorgieTotalUSD
     },
     gabby: {
       ...prev.gabby, 
-      savings: gabbyTotal
-      }
-    }));
-    
-    toast({ 
+      savings: gabbyTotalCOP
+    }
+  }));
+  
+  toast({ 
     title: "Movement deleted",
     status: "success",
     duration: 3000,
@@ -788,225 +852,290 @@ const calculateEstimatedTime = () => {
     }
 }
     function handleAddTransaction() {
-    if (addTab === 0) {
-      // Expense
-      if (!addData.amount || !addData.category) {
-        toast({
-          title: "Please fill required fields",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
-      }
-      
-      const movement = {
-        amount: Number(addData.amount),
-        currency: addData.currency,
-        category: addData.category,
-        subcategory: addData.subcategory,
-        paymentMethod: addData.paymentMethod,
-        date: addData.date || todayStr(),
-        type: "Expense",
-        user: activeUser
-      };
-      
-      setHistory(prev => [movement, ...prev]);
-      
-      setUserData(prev => ({
-        ...prev,
-        [activeUser]: {
-          ...prev[activeUser],
-          savings: Math.max(0, (prev[activeUser].savings || 0) - toDisplayCurrency(Number(addData.amount), addData.currency))
-        }
-      }));
-      
+  if (addTab === 0) {
+    // Expense
+    if (!addData.amount || !addData.category) {
       toast({
-        title: "Expense added!",
-        status: "success",
+        title: "Please fill required fields",
+        status: "warning",
         duration: 3000,
         isClosable: true,
       });
-    } else if (addTab === 1) {
-      // Income
-      if (!addData.amount) {
-        toast({
-          title: "Please fill required fields",
-          status: "warning",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
+      return;
+    }
+    
+    const amount = Number(addData.amount);
+    const movement = {
+      amount: amount,
+      currency: addData.currency,
+      category: addData.category,
+      subcategory: addData.subcategory,
+      paymentMethod: addData.paymentMethod,
+      date: addData.date || todayStr(),
+      type: "Expense",
+      user: activeUser
+    };
+    
+    setHistory(prev => [movement, ...prev]);
+    
+    // Update user data with the expense
+    setUserData(prev => {
+      // Convert expense to user's currency
+      const userCurrency = prev[activeUser].currency || "USD";
+      let amountInUserCurrency = amount;
+      
+      if (addData.currency !== userCurrency) {
+        if (userCurrency === "USD") {
+          amountInUserCurrency = convertToUSD(amount, addData.currency);
+        } else {
+          // Convert to COP
+          amountInUserCurrency = convertToCOP(amount, "USD");
+        }
       }
       
-      const movement = {
-        amount: Number(addData.amount),
-        currency: addData.currency,
-        source: addData.source,
-        category: addData.source,
-        date: addData.date || todayStr(),
-        type: "Income",
-        user: activeUser,
-        subcategory: addData.source === "Other" ? addData.subcategory : ""
-        // Se eliminó la opción de pago automático para ingresos
-      };
-      
-      setHistory(prev => [movement, ...prev]);
-      
-      setUserData(prev => ({
+      return {
         ...prev,
         [activeUser]: {
           ...prev[activeUser],
-          savings: (prev[activeUser].savings || 0) + toDisplayCurrency(Number(addData.amount), addData.currency)
+          savings: Math.max(0, (prev[activeUser].savings || 0) - amountInUserCurrency)
         }
-      }));
-      
+      };
+    });
+    
+    toast({
+      title: "Expense added!",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+  } else if (addTab === 1) {
+    // Income
+    if (!addData.amount) {
       toast({
-        title: "Income added!",
-        status: "success",
+        title: "Please fill required fields",
+        status: "warning",
         duration: 3000,
         isClosable: true,
       });
+      return;
     }
-        else if (addTab === 2) {
-  // Debt
-  if (!addData.debtName || !addData.debtTotal) {
+    
+    const amount = Number(addData.amount);
+    const movement = {
+      amount: amount,
+      currency: addData.currency,
+      source: addData.source,
+      category: addData.source,
+      date: addData.date || todayStr(),
+      type: "Income",
+      user: activeUser,
+      subcategory: addData.source === "Other" ? addData.subcategory : ""
+    };
+    
+    setHistory(prev => [movement, ...prev]);
+    
+    // Update user data with the income
+    setUserData(prev => {
+      // Convert income to user's currency
+      const userCurrency = prev[activeUser].currency || "USD";
+      let amountInUserCurrency = amount;
+      
+      if (addData.currency !== userCurrency) {
+        if (userCurrency === "USD") {
+          amountInUserCurrency = convertToUSD(amount, addData.currency);
+        } else {
+          // Convert to COP
+          amountInUserCurrency = convertToCOP(amount, "USD");
+        }
+      }
+      
+      return {
+        ...prev,
+        [activeUser]: {
+          ...prev[activeUser],
+          savings: (prev[activeUser].savings || 0) + amountInUserCurrency
+        }
+      };
+    });
+    
     toast({
-      title: "Please fill required fields",
-      status: "warning",
+      title: "Income added!",
+      status: "success",
       duration: 3000,
       isClosable: true,
     });
-    return;
-  }
-  
-  // Agregar a la estructura de datos de usuario
-  setUserData(prev => ({
-    ...prev,
-    [activeUser]: {
-      ...prev[activeUser],
-      debts: [
-        ...(prev[activeUser].debts || []),
-        {
-          name: addData.debtName,
-          total: Number(addData.debtTotal),
-          currency: addData.debtCurrency || "USD",
-          monthlyPayment: Number(addData.debtMonthly) || 0,
-          source: addData.debtSource || INCOME_SOURCES[0],
-          date: todayStr(),
-          isAutomatic: addData.isDebtAutomatic,
-          checkSource: addData.checkSource
-        }
-      ],
-      debtsTotal: (prev[activeUser].debtsTotal || 0) + toDisplayCurrency(Number(addData.debtTotal), addData.debtCurrency || "USD")
+  } else if (addTab === 2) {
+    // Debt
+    if (!addData.debtName || !addData.debtTotal) {
+      toast({
+        title: "Please fill required fields",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
     }
-  }));
-  
-  // AÑADIR ESTO: Crear un registro en el historial para el debt
-  const debtMovement = {
-    amount: Number(addData.debtTotal),
-    currency: addData.debtCurrency || "USD",
-    category: "Debt",
-    subcategory: addData.debtName,
-    date: todayStr(),
-    type: "Debt",
-    user: activeUser,
-    isAutomatic: addData.isDebtAutomatic,
-    checkSource: addData.checkSource,
-    monthlyPayment: Number(addData.debtMonthly) || 0
-  };
-  
-  setHistory(prev => [debtMovement, ...prev]);
-  
-  toast({
-    title: "Debt added!",
-    status: "success",
-    duration: 3000,
-    isClosable: true,
-  });
-} else if (addTab === 3) {
-  // Savings Account
-  if (!addData.savingWhere || !addData.savingAmount) {
+    
+    const amount = Number(addData.debtTotal);
+    
+    // Agregar a la estructura de datos de usuario
+    setUserData(prev => {
+      // Convert debt to user's currency
+      const userCurrency = prev[activeUser].currency || "USD";
+      let amountInUserCurrency = amount;
+      
+      if (addData.debtCurrency !== userCurrency) {
+        if (userCurrency === "USD") {
+          amountInUserCurrency = convertToUSD(amount, addData.debtCurrency);
+        } else {
+          // Convert to COP
+          amountInUserCurrency = convertToCOP(amount, addData.debtCurrency);
+        }
+      }
+      
+      return {
+        ...prev,
+        [activeUser]: {
+          ...prev[activeUser],
+          debts: [
+            ...(prev[activeUser].debts || []),
+            {
+              name: addData.debtName,
+              total: amount,
+              currency: addData.debtCurrency || "USD",
+              monthlyPayment: Number(addData.debtMonthly) || 0,
+              source: addData.debtSource || INCOME_SOURCES[0],
+              date: todayStr(),
+              isAutomatic: addData.isDebtAutomatic,
+              checkSource: addData.checkSource
+            }
+          ],
+          debtsTotal: (prev[activeUser].debtsTotal || 0) + amountInUserCurrency
+        }
+      };
+    });
+    
+    // Crear un registro en el historial para el debt
+    const debtMovement = {
+      amount: amount,
+      currency: addData.debtCurrency || "USD",
+      category: "Debt",
+      subcategory: addData.debtName,
+      date: todayStr(),
+      type: "Debt",
+      user: activeUser,
+      isAutomatic: addData.isDebtAutomatic,
+      checkSource: addData.checkSource,
+      monthlyPayment: Number(addData.debtMonthly) || 0
+    };
+    
+    setHistory(prev => [debtMovement, ...prev]);
+    
     toast({
-      title: "Please fill required fields",
-      status: "warning",
+      title: "Debt added!",
+      status: "success",
       duration: 3000,
       isClosable: true,
     });
-    return;
+  } else if (addTab === 3) {
+    // Savings Account
+    if (!addData.savingWhere || !addData.savingAmount) {
+      toast({
+        title: "Please fill required fields",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+    
+    const amount = Number(addData.savingAmount);
+    // Update user data with the savings
+    setUserData(prev => {
+      // Convert savings to user's currency
+      const userCurrency = prev[activeUser].currency || "USD";
+      let amountInUserCurrency = amount;
+      
+      if (addData.savingCurrency !== userCurrency) {
+        if (userCurrency === "USD") {
+          amountInUserCurrency = convertToUSD(amount, addData.savingCurrency);
+        } else {
+          // Convert to COP - este es el caso importante
+          amountInUserCurrency = convertToCOP(amount, addData.savingCurrency);
+        }
+      }
+      
+      return {
+        ...prev,
+        [activeUser]: {
+          ...prev[activeUser],
+          savingsAccounts: [
+            ...(prev[activeUser].savingsAccounts || []),
+            {
+              where: addData.savingWhere,
+              amount: amount,
+              currency: addData.savingCurrency || "USD",
+              date: todayStr(),
+              monthlySavings: Number(addData.monthlySavings) || 0,
+              isAutomatic: addData.isSavingAutomatic,
+              checkSource: addData.checkSource
+            }
+          ],
+          savings: (prev[activeUser].savings || 0) + amountInUserCurrency
+        }
+      };
+    });
+    
+    // Create history record
+    const savingMovement = {
+      amount: amount,
+      currency: addData.savingCurrency || "USD",
+      category: "Savings",
+      subcategory: addData.savingWhere,
+      date: todayStr(),
+      type: "Savings",
+      user: activeUser,
+      isAutomatic: addData.isSavingAutomatic,
+      checkSource: addData.checkSource,
+      monthlySavings: Number(addData.monthlySavings) || 0
+    };
+    
+    setHistory(prev => [savingMovement, ...prev]);
+    
+    toast({
+      title: "Savings account added!",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
   }
   
-  // Agregar a la estructura de datos de usuario
-  setUserData(prev => ({
-    ...prev,
-    [activeUser]: {
-      ...prev[activeUser],
-      savingsAccounts: [
-        ...(prev[activeUser].savingsAccounts || []),
-        {
-          where: addData.savingWhere,
-          amount: Number(addData.savingAmount),
-          currency: addData.savingCurrency || "USD",
-          date: todayStr(),
-          monthlySavings: Number(addData.monthlySavings) || 0,
-          isAutomatic: addData.isSavingAutomatic,
-          checkSource: addData.checkSource
-        }
-      ],
-      savings: (prev[activeUser].savings || 0) + toDisplayCurrency(Number(addData.savingAmount), addData.savingCurrency || "USD")
-    }
-  }));
-  
-  // AÑADIR ESTO: Crear un registro en el historial para el saving
-  const savingMovement = {
-    amount: Number(addData.savingAmount),
-    currency: addData.savingCurrency || "USD",
-    category: "Savings",
-    subcategory: addData.savingWhere,
+  // Reset form and close modal
+  setShowAddModal(false);
+  setAddData({
+    amount: "",
+    currency: currentUser?.currency || "USD",
+    category: "",
+    subcategory: "",
+    paymentMethod: PAYMENT_METHODS[0],
+    source: INCOME_SOURCES[0],
     date: todayStr(),
-    type: "Savings",
-    user: activeUser,
-    isAutomatic: addData.isSavingAutomatic,
-    checkSource: addData.checkSource,
-    monthlySavings: Number(addData.monthlySavings) || 0
-  };
-  
-  setHistory(prev => [savingMovement, ...prev]);
-  
-  toast({
-    title: "Savings account added!",
-    status: "success",
-    duration: 3000,
-    isClosable: true,
+    debtName: "",
+    debtTotal: "",
+    debtCurrency: "USD",
+    debtMonthly: "",
+    debtSource: INCOME_SOURCES[0],
+    savingWhere: "",
+    savingAmount: "",
+    savingCurrency: "USD",
+    isAutomatic: false,
+    isIncomeAutomatic: false,
+    isDebtAutomatic: false,
+    isSavingAutomatic: false,
+    checkSource: "First Check",
+    monthlySavings: ""
   });
 }
-    
-    // Reset form and close modal
-    setShowAddModal(false);
-    setAddData({
-      amount: "",
-      currency: currentUser?.currency || "USD",
-      category: "",
-      subcategory: "",
-      paymentMethod: PAYMENT_METHODS[0],
-      source: INCOME_SOURCES[0],
-      date: todayStr(),
-      debtName: "",
-      debtTotal: "",
-      debtCurrency: "USD",
-      debtMonthly: "",
-      debtSource: INCOME_SOURCES[0],
-      savingWhere: "",
-      savingAmount: "",
-      savingCurrency: "USD",
-      isAutomatic: false,
-      isIncomeAutomatic: false,
-      isDebtAutomatic: false,
-      isSavingAutomatic: false,
-      checkSource: "First Check",
-      monthlySavings: ""
-    });
-  }
     // Render
     return (
     <Box minH="100vh" bg="#f7f7fa" pb="80px">
@@ -1794,7 +1923,7 @@ const calculateEstimatedTime = () => {
   <HStack justify="space-between" p={2} bg="gray.50" borderRadius="md">
     <Text fontWeight="medium" color={palette?.text || '#222'}>Savings</Text>
     <Text fontWeight="extrabold" color={palette?.button3 || 'blue.600'} fontSize="md">
-      {displayCurrency === "USD" ? "$" : "COL$"}{formatNumber(toDisplayCurrency(currentUser.savings || 0, currentUser.currency || "USD"), displayCurrency)}
+      {displayCurrency === "USD" ? "$" : "COL$"}{formatNumber(netSavings, displayCurrency)}
     </Text>
   </HStack>
 </VStack>
@@ -2231,28 +2360,10 @@ const calculateEstimatedTime = () => {
               color={activeScreen === "together" ? palette?.button3 || "blue.500" : "gray.400"}
               _hover={{ bg: "gray.50" }}
               onClick={() => {
-                try {
-                  // Indicar que está cargando
-                  setIsLoading(true);
-                  
-                  // Llamar directamente a setActiveScreen
-                  setActiveScreen("together");
-                  
-                  // Luego actualizar los datos en el siguiente ciclo de renderizado
-                  setTimeout(() => {
-                    try {
-                      const newFinancials = calculateCombinedFinancials();
-                      setCombinedFinancials(newFinancials);
-                      setIsLoading(false);
-                    } catch (error) {
-                      console.error("Error al calcular datos:", error);
-                      setIsLoading(false);
-                    }
-                  }, 100);
-                } catch (error) {
-                  console.error("Error al cambiar a Together:", error);
-                  setIsLoading(false);
-                }
+                // Forzar una actualización y cambiar a Together
+                const updatedFinancials = calculateCombinedFinancials();
+                setCombinedFinancials(updatedFinancials);
+                setActiveScreen("together");
               }}
               isDisabled={isLoading}
             >
@@ -2499,13 +2610,13 @@ const calculateEstimatedTime = () => {
         <Text fontWeight="bold">{userData.jorgie?.name || "Jorgie"}</Text>
         <Stat textAlign="center">
           <StatNumber fontSize="lg">
-            ${formatNumber(convertToUSD(userData.jorgie?.savings || 0, userData.jorgie?.currency || "USD"), "USD")}
+            ${formatNumber(userData.jorgie?.savings || 0, "USD")}
           </StatNumber>
           <StatHelpText>
             <StatArrow type="increase" />
             {combinedFinancials.savings > 0 ? 
-              ((convertToUSD(userData.jorgie?.savings || 0, userData.jorgie?.currency || "USD") / 
-              combinedFinancials.savings) * 100).toFixed(1) : "0.0"}%
+              ((userData.jorgie?.savings || 0) / 
+              convertToCOP(combinedFinancials.savings, "USD") * 100).toFixed(1) : "0.0"}%
           </StatHelpText>
         </Stat>
       </VStack>
@@ -2523,12 +2634,12 @@ const calculateEstimatedTime = () => {
         <Text fontWeight="bold">{userData.gabby?.name || "Gabby"}</Text>
         <Stat textAlign="center">
           <StatNumber fontSize="lg">
-            ${formatNumber(convertToUSD(userData.gabby?.savings || 0, userData.gabby?.currency || "USD"), "USD")}
+            COL${formatNumber(userData.gabby?.savings || 0, "COP")}
           </StatNumber>
           <StatHelpText>
             <StatArrow type="increase" />
             {combinedFinancials.savings > 0 ? 
-              ((convertToUSD(userData.gabby?.savings || 0, userData.gabby?.currency || "USD") / 
+              ((convertToUSD(userData.gabby?.savings || 0, "COP") / 
               combinedFinancials.savings) * 100).toFixed(1) : "0.0"}%
           </StatHelpText>
         </Stat>
@@ -2592,28 +2703,10 @@ const calculateEstimatedTime = () => {
                 color={palette?.button3 || "blue.500"}
                 _hover={{ bg: "gray.50" }}
                 onClick={() => {
-                  try {
-                    // Indicar que está cargando
-                    setIsLoading(true);
-                    
-                    // Llamar directamente a setActiveScreen
-                    setActiveScreen("together");
-                    
-                    // Luego actualizar los datos en el siguiente ciclo de renderizado
-                    setTimeout(() => {
-                      try {
-                        const newFinancials = calculateCombinedFinancials();
-                        setCombinedFinancials(newFinancials);
-                        setIsLoading(false);
-                      } catch (error) {
-                        console.error("Error al calcular datos:", error);
-                        setIsLoading(false);
-                      }
-                    }, 100);
-                  } catch (error) {
-                    console.error("Error al cambiar a Together:", error);
-                    setIsLoading(false);
-                  }
+                  // Forzar una actualización y cambiar a Together
+                  const updatedFinancials = calculateCombinedFinancials();
+                  setCombinedFinancials(updatedFinancials);
+                  setActiveScreen("together");
                 }}
                 isDisabled={isLoading}
               >

@@ -5,17 +5,16 @@ import { getAuth } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
-// Tu configuración de Firebase
-// Debes reemplazar estos valores con los de tu proyecto en Firebase
+// Firebase configuration using environment variables
 const firebaseConfig = {
-  apiKey: "AIzaSyCqR8DOBCOsNsiycBvJNWd1JQKu73i7VLU",
-  authDomain: "team-love-2dd83.firebaseapp.com",
-  projectId: "team-love-2dd83",
-  storageBucket: "team-love-2dd83.firebasestorage.app",
-  messagingSenderId: "794621460850",
-  appId: "1:794621460850:web:bb9ee5132f1aa638ce9deb",
-  measurementId: "G-0W56K3B12G",
-  databaseURL: "https://team-love-2dd83-default-rtdb.firebaseio.com"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "REPLACE_WITH_YOUR_API_KEY",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "REPLACE_WITH_YOUR_AUTH_DOMAIN",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "REPLACE_WITH_YOUR_PROJECT_ID",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "REPLACE_WITH_YOUR_STORAGE_BUCKET",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "REPLACE_WITH_YOUR_MESSAGING_SENDER_ID",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "REPLACE_WITH_YOUR_APP_ID",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "REPLACE_WITH_YOUR_MEASUREMENT_ID",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "REPLACE_WITH_YOUR_DATABASE_URL"
 };
 
 // Inicializa Firebase

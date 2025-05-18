@@ -1,4 +1,4 @@
-// Dashboard.jsx
+// Dashboard.jsx - Version móvil mejorada
 import React, { useState, useEffect } from "react";
 import {
   Box, Flex, Avatar, Text, Button, HStack, VStack, Divider, IconButton, 
@@ -201,15 +201,14 @@ export default function Dashboard() {
   // Añadir este nuevo efecto después de los otros useEffect
 useEffect(() => {
   if (activeScreen === "together") {
-    // Recalcular datos combinados
-    const newCombinedFinancials = calculateCombinedFinancials();
-    // Forzar actualización
-    setUserData({...userData});
+    // Desactivamos el código que está causando el bucle infinito
+    // const newCombinedFinancials = calculateCombinedFinancials();
+    // setUserData({...userData}); <- Esta línea está causando el bucle infinito
     
     // Siempre mostrar en dólares en la pantalla Together
     setDisplayCurrency("USD");
   }
-}, [activeScreen, history, userData.jorgie, userData.gabby]);
+}, [activeScreen]); // Eliminamos la dependencia de userData para evitar el bucle infinito
   
   // Other effects
   useEffect(() => {
@@ -299,14 +298,14 @@ const netSavings = Math.max(0, calculatedSavings);
   const budget = currentUser?.budget || 0;
     // Calculate combined financial data for both users
  const calculateCombinedFinancials = () => {
-  console.log("Calculando financials combinados");
+  // Removing console.log that was causing console spam
   let totalCombinedSavings = 0;
   let totalCombinedIncome = 0;
   let totalCombinedExpenses = 0;
   
   // Calculate for Jorgie
   if (userData.jorgie) {
-    console.log("Datos de Jorgie:", userData.jorgie.savings);
+    // Removing console.log that was causing console spam
     totalCombinedSavings += convertToUSD(userData.jorgie.savings || 0, userData.jorgie.currency || "USD");
     
     const jorgieHistory = history.filter(h => h.user === "jorgie");
@@ -324,7 +323,7 @@ const netSavings = Math.max(0, calculatedSavings);
   
   // Calculate for Gabby
   if (userData.gabby) {
-    console.log("Datos de Gabby:", userData.gabby.savings);
+    // Removing console.log that was causing console spam
     totalCombinedSavings += convertToUSD(userData.gabby.savings || 0, userData.gabby.currency || "COP");
     
     const gabbyHistory = history.filter(h => h.user === "gabby");
@@ -340,14 +339,9 @@ const netSavings = Math.max(0, calculatedSavings);
     totalCombinedExpenses += gabbyExpenses;
   }
   
-  console.log("Totales calculados:", {
-    savings: totalCombinedSavings,
-    income: totalCombinedIncome,
-    expenses: totalCombinedExpenses,
-    balance: totalCombinedIncome - totalCombinedExpenses
-    });
+  // Removing console.log that was causing console spam
     
-    return {
+  return {
     savings: totalCombinedSavings,
     income: totalCombinedIncome,
     expenses: totalCombinedExpenses,
@@ -355,8 +349,22 @@ const netSavings = Math.max(0, calculatedSavings);
   };
 };
   
-  const combinedFinancials = calculateCombinedFinancials();
+  // Cambiamos de constante a estado
+  const [combinedFinancials, setCombinedFinancials] = useState({
+    savings: 0,
+    income: 0,
+    expenses: 0,
+    balance: 0
+  });
   
+  // Recalculamos solo cuando cambia el historial o se cambia de pantalla
+  useEffect(() => {
+    if (activeScreen === "together" || history.length > 0) {
+      const newFinancials = calculateCombinedFinancials();
+      setCombinedFinancials(newFinancials);
+    }
+  }, [history, activeScreen]);
+
   // Calculate progress towards goal
 const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   ? Math.min(100, (combinedFinancials.savings / goals.coupleGoal.amount) * 100) 
@@ -619,7 +627,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   jorgieTotal = Math.max(0, jorgieTotal);
   gabbyTotal = Math.max(0, gabbyTotal);
   
-  console.log("Nuevos totales después de eliminar:", { jorgieTotal, gabbyTotal });
+  // Removing console.log that was causing console spam
   
   // Actualizar el historial y los totales de ambos usuarios
   setHistory(newHistory);
@@ -1037,10 +1045,10 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
         </ModalContent>
       </Modal>
             {/* Add Modal */}
-      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} size="md">
+      <Modal isOpen={showAddModal} onClose={() => setShowAddModal(false)} size={{base: "full", md: "md"}}>
         <ModalOverlay />
-        <ModalContent borderRadius="xl" bg={palette?.cardBg || "#fff"}>
-         <ModalHeader display="flex" alignItems="center" bg={palette?.button3 || "#4299E1"} color="white" borderTopRadius="xl" p={4}>
+        <ModalContent borderRadius={{base: "0", md: "xl"}} bg={palette?.cardBg || "#fff"} maxW="100%" maxH="100vh" overflowY="auto">
+         <ModalHeader display="flex" alignItems="center" bg={palette?.button3 || "#4299E1"} color="white" borderTopRadius={{base: "0", md: "xl"}} p={4}>
   <Avatar 
     size="sm" 
     src={currentUser?.avatar} 
@@ -1049,13 +1057,13 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   />
   <Text fontWeight="bold">Add New Movement</Text>
 </ModalHeader>
-          <ModalBody>
+          <ModalBody pb={6}>
             <Tabs isFitted onChange={(idx) => setAddTab(idx)} index={addTab}>
               <TabList mb={4}>
-                <Tab>Expense</Tab>
-                <Tab>Income</Tab>
-                <Tab>Debt</Tab>
-                <Tab>Savings</Tab>
+                <Tab fontSize={{base: "sm", md: "md"}} py={2}>Expense</Tab>
+                <Tab fontSize={{base: "sm", md: "md"}} py={2}>Income</Tab>
+                <Tab fontSize={{base: "sm", md: "md"}} py={2}>Debt</Tab>
+                <Tab fontSize={{base: "sm", md: "md"}} py={2}>Savings</Tab>
               </TabList>
               <TabPanels>
                 {/* Expense Tab */}
@@ -1065,7 +1073,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                       <FormLabel>Amount</FormLabel>
                       <HStack>
                         <Input
-  type="text"
+  type="tel"
+  inputMode="numeric"
+  pattern="[0-9]*"
   placeholder="Amount"
   value={addData.amount ? Number(addData.amount).toLocaleString() : ""}
   onChange={(e) => {
@@ -1073,6 +1083,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
     const numericValue = e.target.value.replace(/[^0-9]/g, "");
     setAddData({ ...addData, amount: numericValue });
   }}
+  min="0"
 />
                         <Select
                           width="100px"
@@ -1137,7 +1148,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                       <FormLabel>Amount</FormLabel>
                       <HStack>
                         <Input
-  type="text"
+  type="tel"
+  inputMode="numeric"
+  pattern="[0-9]*"
   placeholder="Amount"
   value={addData.amount ? Number(addData.amount).toLocaleString() : ""}
   onChange={(e) => {
@@ -1145,6 +1158,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
     const numericValue = e.target.value.replace(/[^0-9]/g, "");
     setAddData({ ...addData, amount: numericValue });
   }}
+  min="0"
 />
                         <Select
                           width="100px"
@@ -1234,7 +1248,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   <FormLabel>Total Amount</FormLabel>
   <HStack>
     <Input
-      type="text"
+      type="tel"
+      inputMode="numeric"
+      pattern="[0-9]*"
       placeholder="Amount"
       value={addData.debtTotal ? Number(addData.debtTotal).toLocaleString() : ""}
       onChange={(e) => {
@@ -1242,6 +1258,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
         const numericValue = e.target.value.replace(/[^0-9]/g, "");
         setAddData({ ...addData, debtTotal: numericValue });
       }}
+      min="0"
     />
     <Select
       width="100px"
@@ -1257,7 +1274,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                     <FormControl>
                       <FormLabel>Monthly Payment</FormLabel>
                       <Input
-                        type="text"
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         placeholder="Monthly Payment"
                         value={addData.debtMonthly ? Number(addData.debtMonthly).toLocaleString() : ""}
                         onChange={(e) => {
@@ -1265,6 +1284,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                           const numericValue = e.target.value.replace(/[^0-9]/g, "");
                           setAddData({ ...addData, debtMonthly: numericValue });
                         }}
+                        min="0"
                       />
                     </FormControl>
                     
@@ -1324,7 +1344,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   <FormLabel>Total Amount</FormLabel>
   <HStack>
     <Input
-      type="text"
+      type="tel"
+      inputMode="numeric"
+      pattern="[0-9]*"
       placeholder="Amount"
       value={addData.savingAmount ? Number(addData.savingAmount).toLocaleString() : ""}
       onChange={(e) => {
@@ -1332,6 +1354,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
         const numericValue = e.target.value.replace(/[^0-9]/g, "");
         setAddData({ ...addData, savingAmount: numericValue });
       }}
+      min="0"
     />
     <Select
       width="100px"
@@ -1347,7 +1370,9 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                     <FormControl>
                       <FormLabel>Monthly Savings</FormLabel>
                       <Input
-                        type="text"
+                        type="tel"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         placeholder="Monthly Amount"
                         value={addData.monthlySavings ? Number(addData.monthlySavings).toLocaleString() : ""}
                         onChange={(e) => {
@@ -1355,6 +1380,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                           const numericValue = e.target.value.replace(/[^0-9]/g, "");
                           setAddData({ ...addData, monthlySavings: numericValue });
                         }}
+                        min="0"
                       />
                     </FormControl>
                     
@@ -2110,7 +2136,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
   onClick={() => {
     // Actualizar datos antes de cambiar de pantalla
     const newFinancials = calculateCombinedFinancials();
-    console.log("Recalculando datos combinados:", newFinancials);
+    // Removing console.log that was causing console spam
     
     // Forzar una actualización completa de los datos
     setUserData({
@@ -2158,7 +2184,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
           {/* Header - MODIFICADO: Centrado */}
 <Box px={4} pt={8} pb={4} textAlign="center">
   <VStack spacing={1}>
-    <Heading fontWeight="bold" fontSize="3xl" color="#222" letterSpacing={0.5}>
+    <Heading fontWeight="bold" fontSize={{base: "2xl", md: "3xl"}} color="#222" letterSpacing={0.5}>
       Couple Finance <span style={{color:'#ec4899', fontSize:'0.9em', verticalAlign:'middle'}}>❤</span>
     </Heading>
     <Text fontSize="lg" color="#666">Welcome, {currentUser.name}!</Text>
@@ -2208,11 +2234,11 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                 />
               </Box>
               
-              <HStack width="100%" justify="space-between">
-                <Badge colorScheme="green" p={2} borderRadius="md">
+              <HStack width="100%" justify="space-between" flexWrap={{base: "wrap", md: "nowrap"}}>
+                <Badge colorScheme="green" p={2} borderRadius="md" mb={{base: 1, md: 0}}>
                   ${formatNumber(combinedFinancials.savings, "USD")} saved
                 </Badge>
-                <Badge colorScheme="blue" p={2} borderRadius="md">
+                <Badge colorScheme="blue" p={2} borderRadius="md" mb={{base: 1, md: 0}}>
                   {goalProgress.toFixed(1)}% complete
                 </Badge>
                 <Badge colorScheme="purple" p={2} borderRadius="md">
@@ -2222,7 +2248,7 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
               
               <Divider my={1} />
               
-              <SimpleGrid columns={2} width="100%" spacing={8}>
+              <SimpleGrid columns={{base: 1, sm: 2}} width="100%" spacing={{base: 4, sm: 8}} mb={6}>
                 <Box 
                   p={4} 
                   borderRadius="xl" 
@@ -2230,14 +2256,14 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                   boxShadow="sm"
                   borderLeft="4px solid #38A169"
                 >
-                  <VStack align="start">
+                  <VStack align="start" spacing={1}>
                     <Text color="gray.500" fontSize="sm">Combined Savings</Text>
-                    <Text fontWeight="bold" fontSize="xl" color="#2D3748">
+                    <Text fontWeight="bold" fontSize={{base: "lg", md: "xl"}} color="#2D3748">
                       ${formatNumber(combinedFinancials.savings, "USD")}
                     </Text>
                     <HStack>
                       <FaArrowUp color="#38A169" />
-                      <Text color="green.500" fontSize="sm">
+                      <Text color="green.500" fontSize="xs">
                         {userData.jorgie && userData.gabby 
                           ? "From both of you" 
                           : "Your current savings"}
@@ -2253,15 +2279,15 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                   boxShadow="sm"
                   borderLeft="4px solid #3182CE"
                 >
-                  <VStack align="start">
+                  <VStack align="start" spacing={1}>
                     <Text color="gray.500" fontSize="sm">Time to Goal</Text>
-                    <Text fontWeight="bold" fontSize="xl" color="#2D3748">
+                    <Text fontWeight="bold" fontSize={{base: "lg", md: "xl"}} color="#2D3748">
                       {timeToGoal.years > 0 ? `${timeToGoal.years}y ` : ""}
                       {timeToGoal.remainingMonths}m
                     </Text>
                     <HStack>
                       <FaCalendarAlt color="#3182CE" />
-                      <Text color="blue.500" fontSize="sm">
+                      <Text color="blue.500" fontSize="xs">
                         Estimated time left
                       </Text>
                     </HStack>
@@ -2278,20 +2304,15 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                   width="100%" 
                   justify="space-between"
                   boxShadow="sm"
+                  flexWrap={{base: "wrap", md: "nowrap"}}
                 >
-                  <HStack>
+                  <HStack spacing={2}>
                     <Box bg="blue.100" p={2} borderRadius="md">
                       <FaPiggyBank color="#3182CE" />
                     </Box>
-                    <VStack align="start" spacing={0}>
-                      <Text fontWeight="medium">To reach goal on time</Text>
-                      <Text fontSize="sm" color="gray.600">
-                        {goals && goals.coupleGoal && goals.coupleGoal.targetDate && 
-                          `Target: ${goals.coupleGoal.targetDate}`}
-                      </Text>
-                    </VStack>
+                    <Text fontWeight="medium">To reach goal on time</Text>
                   </HStack>
-                  <Text fontWeight="bold" color="blue.600">
+                  <Text fontWeight="bold" color="blue.600" fontSize={{base: "md", md: "lg"}}>
                     ${formatNumber(
                       Math.max(0, goals && goals.coupleGoal && goals.coupleGoal.amount ? goals.coupleGoal.amount - combinedFinancials.savings : 30000 - combinedFinancials.savings) / 
                       Math.max(1, timeToGoal.months || 24), 
@@ -2382,14 +2403,16 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
             right={0}
             borderTopWidth="1px"
             borderTopColor="gray.200"
-            p={2}
+            p={1}
             bg="white"
             zIndex={10}
+            boxShadow="0 -2px 10px rgba(0,0,0,0.05)"
           >
             <HStack spacing={0} justify="space-around">
               <Button
                 variant="ghost"
-                py={6}
+                py={{base: 4, md: 6}}
+                px={2}
                 flex={1}
                 borderRadius="none"
                 color="gray.400"
@@ -2397,28 +2420,30 @@ const goalProgress = goals && goals.coupleGoal && goals.coupleGoal.amount
                 onClick={() => setActiveScreen("dashboard")}
               >
                 <VStack spacing={1}>
-                  <FaHome />
+                  <FaHome size={18} />
                   <Text fontSize="xs">Home</Text>
-              </VStack>
-            </Button>
+                </VStack>
+              </Button>
               
-            <Button
+              <Button
                 variant="ghost"
-                py={6}
+                py={{base: 4, md: 6}}
+                px={2}
                 flex={1}
                 borderRadius="none"
                 color={palette?.button3 || "blue.500"}
                 _hover={{ bg: "gray.50" }}
               >
                 <VStack spacing={1}>
-                  <FaUsers />
+                  <FaUsers size={18} />
                   <Text fontSize="xs">Together</Text>
-              </VStack>
-            </Button>
+                </VStack>
+              </Button>
               
               <Button
                 variant="ghost"
-                py={6}
+                py={{base: 4, md: 6}}
+                px={2}
                 flex={1}
                 borderRadius="none"
                 color="gray.400"

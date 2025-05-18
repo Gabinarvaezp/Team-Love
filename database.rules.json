@@ -1,20 +1,24 @@
 {
   "rules": {
-    ".read": "auth != null",
+    ".read": "auth != null || (now < 1735689600000)",  // Hasta 31 de diciembre de 2025
     ".write": "auth != null",
     "movements": {
-      ".read": "auth != null",
+      ".read": "auth != null || (now < 1735689600000)",
       ".write": "auth != null",
       "$movement_id": {
-        ".validate": "newData.hasChildren(['type', 'amount', 'user', 'date'])"
+        ".validate": "newData.hasChild('type') && newData.hasChild('amount') && newData.hasChild('user') && newData.hasChild('date')"
       }
     },
     "users": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null || (now < 1735689600000)",
+      ".write": "auth != null",
+      "$user_id": {
+        ".read": "auth != null || auth.uid == $user_id || (now < 1735689600000)",
+        ".write": "auth != null && (auth.uid == $user_id)"
+      }
     },
     "goals": {
-      ".read": "auth != null",
+      ".read": "auth != null || (now < 1735689600000)",
       ".write": "auth != null"
     }
   }

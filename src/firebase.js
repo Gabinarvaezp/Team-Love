@@ -1,7 +1,14 @@
 // Firebase configuration
 import { initializeApp } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+import { 
+  getFirestore, 
+  enableIndexedDbPersistence, 
+  CACHE_SIZE_UNLIMITED,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager
+} from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 import { getStorage } from "firebase/storage";
 
@@ -20,30 +27,41 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize all services
+// Initialize Auth with custom settings
 const auth = getAuth(app);
-const db = getFirestore(app);
+auth.useDeviceLanguage();
+
+// Initialize Firestore with improved offline persistence
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager(),
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED
+  })
+});
+
+// Initialize other services
 const rtdb = getDatabase(app);
 const storage = getStorage(app);
 
-// Enable offline persistence for Firestore (helps with connection issues)
-try {
-  enableIndexedDbPersistence(db, {
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED
-  }).then(() => {
-    console.log("Firebase offline persistence enabled");
-  }).catch((err) => {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore persistence failed - multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore persistence not available in this browser');
-    } else {
-      console.error('Firestore persistence error:', err);
-    }
-  });
-} catch (err) {
-  console.warn('Error enabling offline persistence:', err);
-}
+// Set longer timeout for operations
+const FIREBASE_TIMEOUT = 30000; // 30 seconds
 
-// Export the initialized services
-export { app, auth, db, rtdb, storage }; 
+// Helper function for timeout wrapping
+const withTimeout = (promise, timeoutMs = FIREBASE_TIMEOUT) => {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Firebase operation timed out'));
+    }, timeoutMs);
+  });
+
+  return Promise.race([
+    promise,
+    timeoutPromise
+  ]).finally(() => {
+    clearTimeout(timeoutId);
+  });
+};
+
+// Export the initialized services and helpers
+export { app, auth, db, rtdb, storage, withTimeout }; 

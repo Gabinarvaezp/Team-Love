@@ -10,6 +10,9 @@ import {
   subscribeToRealTimeData 
 } from './firebaseService';
 
+// Set language to English
+const language = 'en';
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,55 +29,42 @@ function App() {
           if (profile) {
             setUserProfile(profile);
             
-            // Sync the profile to real-time database for other devices
-            saveRealTimeData(`users/${authUser.uid}/profile`, profile)
-              .catch(error => {
-                console.error("Error syncing profile to real-time database:", error);
-              });
+            // Sync to real-time database
+            saveRealTimeData(`users/${authUser.uid}/profile`, profile);
           } else {
-            // Si no tiene perfil, creamos uno por defecto
+            // Create default profile if not exists
             const defaultProfile = {
               name: authUser.email.split('@')[0],
-              avatar: authUser.email.toLowerCase().includes('jorgie') ? '/hubby.jpg' : '/wifey.jpg',
-              currency: authUser.email.toLowerCase().includes('jorgie') ? 'USD' : 'COP',
-              savingsAccounts: [],
-              debts: [],
-              savings: 0,
-              debtsTotal: 0,
-              budget: 0,
-              userId: authUser.uid
+              email: authUser.email,
+              uid: authUser.uid,
+              language: language, // Use English by default
+              createdAt: new Date().toISOString()
             };
             
             await addUserProfile(authUser.uid, defaultProfile);
-            
-            // Also save to real-time database
-            saveRealTimeData(`users/${authUser.uid}/profile`, defaultProfile)
-              .catch(error => {
-                console.error("Error saving profile to real-time database:", error);
-              });
-            
             setUserProfile(defaultProfile);
+            
+            // Sync to real-time database
+            saveRealTimeData(`users/${authUser.uid}/profile`, defaultProfile);
           }
-          
-          // Subscribe to real-time updates for this user's profile
-          const profileUnsubscribe = subscribeToRealTimeData(`users/${authUser.uid}/profile`, (data) => {
-            if (data && data !== userProfile) {
-              setUserProfile(data);
-            }
-          });
-          
-          // Clean up the subscription when the component unmounts or the user changes
-          return () => profileUnsubscribe();
         } catch (error) {
-          console.error("Error al cargar perfil:", error);
+          console.error("Error getting user profile:", error);
         }
+        
+        // Subscribe to real-time data changes
+        const unsubscribeRealtime = subscribeToRealTimeData(`users/${authUser.uid}`, (data) => {
+          console.log("Real-time data updated:", data);
+          // Update any real-time data in your app state here
+        });
+        
+        setLoading(false);
       } else {
         setUser(null);
         setUserProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
-    
+
     return () => unsubscribe();
   }, []);
 
@@ -85,8 +75,8 @@ function App() {
   if (loading) {
     return (
       <ChakraProvider>
-        <Box height="100vh" display="flex" alignItems="center" justifyContent="center">
-          Cargando...
+        <Box display="flex" alignItems="center" justifyContent="center" h="100vh">
+          Loading...
         </Box>
       </ChakraProvider>
     );

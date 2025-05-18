@@ -10,7 +10,9 @@ import {
   where, 
   getDocs, 
   onSnapshot,
-  serverTimestamp 
+  serverTimestamp,
+  getDoc,
+  setDoc 
 } from 'firebase/firestore';
 import { 
   createUserWithEmailAndPassword, 
@@ -24,7 +26,8 @@ import {
   push,
   onValue,
   update,
-  remove
+  remove,
+  get
 } from 'firebase/database';
 import {
   ref as storageRef,
@@ -32,13 +35,35 @@ import {
   getDownloadURL
 } from 'firebase/storage';
 
-// Autenticación de usuarios
+// Error handling utility
+const handleFirebaseError = (error, customMessage = "Firebase operation failed") => {
+  console.error(`${customMessage}:`, error);
+  
+  // Return more user-friendly error
+  const errorCode = error.code || 'unknown';
+  const errorMessage = error.message || 'An unknown error occurred';
+  
+  return {
+    code: errorCode,
+    message: errorMessage,
+    friendly: errorCode === 'permission-denied' 
+      ? 'You do not have permission to perform this action. Please check your account.'
+      : 'There was a problem connecting to the service. Please try again later.'
+  };
+};
+
+// Auth State Observer
+export const onAuthChange = (callback) => {
+  return onAuthStateChanged(auth, callback);
+};
+
+// User Authentication
 export const registerUser = async (email, password) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     return userCredential.user;
   } catch (error) {
-    throw error;
+    throw handleFirebaseError(error, "Failed to register user");
   }
 };
 
@@ -47,7 +72,7 @@ export const loginUser = async (email, password) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
   } catch (error) {
-    throw error;
+    throw handleFirebaseError(error, "Failed to login");
   }
 };
 
@@ -56,7 +81,7 @@ export const logoutUser = async () => {
     await signOut(auth);
     return true;
   } catch (error) {
-    throw error;
+    throw handleFirebaseError(error, "Failed to logout");
   }
 };
 
@@ -64,11 +89,186 @@ export const getCurrentUser = () => {
   return auth.currentUser;
 };
 
-export const onAuthChange = (callback) => {
-  return onAuthStateChanged(auth, callback);
+// User Profile Management
+export const getUserProfile = async (userId) => {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    const docSnap = await getDoc(userDocRef);
+    
+    if (docSnap.exists()) {
+      return docSnap.data();
+    } else {
+      return null;
+    }
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to get user profile");
+  }
 };
 
-// Real-time database operations for syncing between users
+export const addUserProfile = async (userId, profileData) => {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    await setDoc(userDocRef, {
+      ...profileData,
+      createdAt: serverTimestamp()
+    });
+    return userId;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to add user profile");
+  }
+};
+
+export const updateUserProfile = async (userId, profileData) => {
+  try {
+    const userDocRef = doc(db, "users", userId);
+    await updateDoc(userDocRef, {
+      ...profileData,
+      updatedAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to update user profile");
+  }
+};
+
+// Financial Movements
+export const addMovement = async (movementData) => {
+  try {
+    const movementsRef = collection(db, "movements");
+    const docRef = await addDoc(movementsRef, {
+      ...movementData,
+      timestamp: serverTimestamp()
+    });
+    
+    // Also save to real-time database for instant sync
+    await saveRealTimeData(`movements/${docRef.id}`, {
+      ...movementData,
+      id: docRef.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    return docRef.id;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to add movement");
+  }
+};
+
+export const getMovements = async (userId) => {
+  try {
+    const movementsRef = collection(db, "movements");
+    const q = query(movementsRef, where("user", "==", userId));
+    const querySnapshot = await getDocs(q);
+    
+    const movements = [];
+    querySnapshot.forEach((doc) => {
+      movements.push({ id: doc.id, ...doc.data() });
+    });
+    
+    return movements;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to get movements");
+  }
+};
+
+export const updateMovement = async (movementId, data) => {
+  try {
+    const movementRef = doc(db, "movements", movementId);
+    await updateDoc(movementRef, {
+      ...data,
+      updatedAt: serverTimestamp()
+    });
+    
+    // Update real-time database for instant sync
+    await updateRealTimeData(`movements/${movementId}`, {
+      ...data,
+      updatedAt: new Date().toISOString()
+    });
+    
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to update movement");
+  }
+};
+
+export const deleteMovement = async (movementId) => {
+  try {
+    const movementRef = doc(db, "movements", movementId);
+    await deleteDoc(movementRef);
+    
+    // Remove from real-time database
+    await removeRealTimeData(`movements/${movementId}`);
+    
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to delete movement");
+  }
+};
+
+// Real-time Database Operations
+export const saveRealTimeData = async (path, data) => {
+  try {
+    const dbRef = ref(rtdb, path);
+    await set(dbRef, data);
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to save real-time data");
+  }
+};
+
+export const updateRealTimeData = async (path, data) => {
+  try {
+    const dbRef = ref(rtdb, path);
+    await update(dbRef, data);
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to update real-time data");
+  }
+};
+
+export const removeRealTimeData = async (path) => {
+  try {
+    const dbRef = ref(rtdb, path);
+    await remove(dbRef);
+    return true;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to remove real-time data");
+  }
+};
+
+export const getRealTimeData = async (path) => {
+  try {
+    const dbRef = ref(rtdb, path);
+    const snapshot = await get(dbRef);
+    if (snapshot.exists()) {
+      return snapshot.val();
+    }
+    return null;
+  } catch (error) {
+    throw handleFirebaseError(error, "Failed to get real-time data");
+  }
+};
+
+export const subscribeToRealTimeData = (path, callback) => {
+  try {
+    const dbRef = ref(rtdb, path);
+    const unsubscribe = onValue(dbRef, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.val());
+      } else {
+        callback(null);
+      }
+    }, (error) => {
+      console.error("Real-time subscription error:", error);
+    });
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error("Failed to subscribe to real-time data:", error);
+    return () => {}; // Return empty function to prevent errors
+  }
+};
+
+// File Storage
 export const uploadFileToStorage = async (file, path) => {
   try {
     const fileRef = storageRef(storage, path);
@@ -76,44 +276,17 @@ export const uploadFileToStorage = async (file, path) => {
     const downloadURL = await getDownloadURL(snapshot.ref);
     return downloadURL;
   } catch (error) {
-    throw error;
+    throw handleFirebaseError(error, "Failed to upload file");
   }
 };
 
-export const saveRealTimeData = async (path, data) => {
+export const getFileURL = async (path) => {
   try {
-    const dataRef = ref(rtdb, path);
-    await set(dataRef, {
-      ...data,
-      timestamp: Date.now()
-    });
-    return true;
+    const fileRef = storageRef(storage, path);
+    return await getDownloadURL(fileRef);
   } catch (error) {
-    throw error;
+    throw handleFirebaseError(error, "Failed to get file URL");
   }
-};
-
-export const updateRealTimeData = async (path, data) => {
-  try {
-    const dataRef = ref(rtdb, path);
-    await update(dataRef, {
-      ...data,
-      updatedAt: Date.now()
-    });
-    return true;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const subscribeToRealTimeData = (path, callback) => {
-  const dataRef = ref(rtdb, path);
-  const unsubscribe = onValue(dataRef, (snapshot) => {
-    const data = snapshot.val();
-    callback(data);
-  });
-  
-  return unsubscribe;
 };
 
 export const pushToRealTimeList = async (path, data) => {
@@ -125,74 +298,6 @@ export const pushToRealTimeList = async (path, data) => {
       timestamp: Date.now()
     });
     return newItemRef.key;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const removeFromRealTimeData = async (path) => {
-  try {
-    const dataRef = ref(rtdb, path);
-    await remove(dataRef);
-    return true;
-  } catch (error) {
-    throw error;
-  }
-};
-
-// Operaciones con la base de datos
-export const addMovement = async (movementData) => {
-  try {
-    const docRef = await addDoc(collection(db, "movements"), {
-      ...movementData,
-      timestamp: serverTimestamp()
-    });
-    return docRef.id;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const updateMovement = async (movementId, movementData) => {
-  try {
-    const docRef = doc(db, "movements", movementId);
-    await updateDoc(docRef, movementData);
-    return true;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const deleteMovement = async (movementId) => {
-  try {
-    const docRef = doc(db, "movements", movementId);
-    await deleteDoc(docRef);
-    return true;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const getMovements = async (userId = null) => {
-  try {
-    let q;
-    if (userId) {
-      q = query(collection(db, "movements"), where("user", "==", userId));
-    } else {
-      q = collection(db, "movements");
-    }
-    
-    const querySnapshot = await getDocs(q);
-    const movements = [];
-    
-    querySnapshot.forEach((doc) => {
-      movements.push({
-        id: doc.id,
-        ...doc.data()
-      });
-    });
-    
-    return movements;
   } catch (error) {
     throw error;
   }
@@ -216,37 +321,4 @@ export const subscribeToMovements = (callback, userId = null) => {
     });
     callback(movements);
   });
-};
-
-// Usuarios
-export const addUserProfile = async (userId, profileData) => {
-  try {
-    const docRef = await addDoc(collection(db, "users"), {
-      userId,
-      ...profileData,
-      createdAt: serverTimestamp()
-    });
-    return docRef.id;
-  } catch (error) {
-    throw error;
-  }
-};
-
-export const getUserProfile = async (userId) => {
-  try {
-    const q = query(collection(db, "users"), where("userId", "==", userId));
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      const doc = querySnapshot.docs[0];
-      return {
-        id: doc.id,
-        ...doc.data()
-      };
-    }
-    
-    return null;
-  } catch (error) {
-    throw error;
-  }
 };

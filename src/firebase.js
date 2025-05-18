@@ -1,16 +1,16 @@
 // Firebase configuration
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-import { getDatabase } from "firebase/database";
-import { getStorage } from "firebase/storage";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getDatabase, connectDatabaseEmulator } from "firebase/database";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 // Hardcoded fallback for development and if env vars are missing
 const firebaseConfig = {
   apiKey: "AIzaSyCqR8DOBCOsNsiycBvJNWd1JQKu73i7VLU",
   authDomain: "team-love-2dd83.firebaseapp.com",
   projectId: "team-love-2dd83",
-  storageBucket: "team-love-2dd83.firebasestorage.app",
+  storageBucket: "team-love-2dd83.appspot.com",
   messagingSenderId: "794621460850",
   appId: "1:794621460850:web:bb9ee5132f1aa638ce9deb",
   measurementId: "G-0W56K3B12G",
@@ -43,13 +43,25 @@ if (!firebaseConfig.databaseURL || !firebaseConfig.databaseURL.includes("firebas
   firebaseConfig.databaseURL = "https://team-love-2dd83-default-rtdb.firebaseio.com";
 }
 
-// Inicializa Firebase
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Inicializa servicios de Firebase
-const db = getFirestore(app);
+// Initialize all services
 const auth = getAuth(app);
+const db = getFirestore(app);
 const rtdb = getDatabase(app);
 const storage = getStorage(app);
 
-export { db, auth, rtdb, storage }; 
+// Flag to determine if we're in development mode
+const isDevelopment = window.location.hostname === 'localhost';
+
+// Handle development for Firebase emulators if needed
+if (isDevelopment && false) { // Set to true if using emulators
+  connectAuthEmulator(auth, 'http://localhost:9099');
+  connectFirestoreEmulator(db, 'localhost', 8080);
+  connectDatabaseEmulator(rtdb, 'localhost', 9000);
+  connectStorageEmulator(storage, 'localhost', 9199);
+}
+
+// Export the initialized services
+export { app, auth, db, rtdb, storage }; 

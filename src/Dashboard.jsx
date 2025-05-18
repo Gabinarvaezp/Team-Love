@@ -14,7 +14,7 @@ import {
   FaPlus, FaMinus, FaHistory, FaDownload, FaTrash, FaUser,
   FaHome, FaExclamationTriangle, FaChartLine, FaUsers,
   FaArrowUp, FaArrowDown, FaPiggyBank, FaCreditCard, FaCalendarAlt,
-  FaInfoCircle, FaCheckCircle, FaExchangeAlt
+  FaInfoCircle, FaCheckCircle, FaExchangeAlt, FaSync
 } from "react-icons/fa";
 import { 
   PieChart, Pie, Cell, Tooltip as PieTooltip, ResponsiveContainer,
@@ -98,6 +98,8 @@ export default function Dashboard() {
   // All useState hooks at the top level
   const [activeScreen, setActiveScreen] = useState("login"); // login, dashboard, together
   const [activeUser, setActiveUser] = useState(null);
+  // Agregar un estado para controlar si está cargando
+  const [isLoading, setIsLoading] = useState(false);
   const [userData, setUserData] = useState(() => {
     const saved = localStorage.getItem("userData");
     return saved ? JSON.parse(saved) : {
@@ -173,7 +175,10 @@ export default function Dashboard() {
     savingAmount: "",
     savingCurrency: "USD",
     savingDate: "",
-    isAutomatic: false,
+    isAutomatic: false, // Estado general (para compatibilidad)
+    isIncomeAutomatic: false, // Nuevo estado para Income
+    isDebtAutomatic: false, // Nuevo estado para Debt
+    isSavingAutomatic: false, // Nuevo estado para Savings
     checkSource: "First Check",
     monthlySavings: ""
   });
@@ -842,9 +847,8 @@ const calculateEstimatedTime = () => {
         date: addData.date || todayStr(),
         type: "Income",
         user: activeUser,
-        subcategory: addData.source === "Other" ? addData.subcategory : "",
-        
-        checkSource: addData.checkSource
+        subcategory: addData.source === "Other" ? addData.subcategory : ""
+        // Se eliminó la opción de pago automático para ingresos
       };
       
       setHistory(prev => [movement, ...prev]);
@@ -890,7 +894,7 @@ const calculateEstimatedTime = () => {
           monthlyPayment: Number(addData.debtMonthly) || 0,
           source: addData.debtSource || INCOME_SOURCES[0],
           date: todayStr(),
-          isAutomatic: addData.isAutomatic,
+          isAutomatic: addData.isDebtAutomatic,
           checkSource: addData.checkSource
         }
       ],
@@ -907,7 +911,7 @@ const calculateEstimatedTime = () => {
     date: todayStr(),
     type: "Debt",
     user: activeUser,
-    isAutomatic: addData.isAutomatic,
+    isAutomatic: addData.isDebtAutomatic,
     checkSource: addData.checkSource,
     monthlyPayment: Number(addData.debtMonthly) || 0
   };
@@ -945,7 +949,7 @@ const calculateEstimatedTime = () => {
           currency: addData.savingCurrency || "USD",
           date: todayStr(),
           monthlySavings: Number(addData.monthlySavings) || 0,
-          isAutomatic: addData.isAutomatic,
+          isAutomatic: addData.isSavingAutomatic,
           checkSource: addData.checkSource
         }
       ],
@@ -962,7 +966,7 @@ const calculateEstimatedTime = () => {
     date: todayStr(),
     type: "Savings",
     user: activeUser,
-    isAutomatic: addData.isAutomatic,
+    isAutomatic: addData.isSavingAutomatic,
     checkSource: addData.checkSource,
     monthlySavings: Number(addData.monthlySavings) || 0
   };
@@ -996,6 +1000,9 @@ const calculateEstimatedTime = () => {
       savingAmount: "",
       savingCurrency: "USD",
       isAutomatic: false,
+      isIncomeAutomatic: false,
+      isDebtAutomatic: false,
+      isSavingAutomatic: false,
       checkSource: "First Check",
       monthlySavings: ""
     });
@@ -1256,31 +1263,7 @@ const calculateEstimatedTime = () => {
                       />
                     </FormControl>
                     
-                    <FormControl display="flex" alignItems="center">
-                      <FormLabel mb="0">
-                        Automatic Income
-                      </FormLabel>
-                      <Switch
-                        isChecked={addData.isAutomatic}
-                        onChange={(e) => setAddData({ ...addData, isAutomatic: e.target.checked })}
-                      />
-                    </FormControl>
-                    
-                    {addData.isAutomatic && (
-                      <FormControl>
-                        <FormLabel>Check Source</FormLabel>
-                        <RadioGroup
-                          value={addData.checkSource}
-                          onChange={(value) => setAddData({ ...addData, checkSource: value })}
-                        >
-                          <Stack direction="row" spacing={5}>
-                            <Radio value="First Check">First Check</Radio>
-                            <Radio value="Second Check">Second Check</Radio>
-                            <Radio value="Both">Both</Radio>
-                          </Stack>
-                        </RadioGroup>
-                      </FormControl>
-                    )}
+                    {/* Se eliminó la opción de pago automático para ingresos */}
                   </VStack>
                 </TabPanel>
                 
@@ -1358,12 +1341,16 @@ const calculateEstimatedTime = () => {
                         Automatic Payment
                       </FormLabel>
                       <Switch
-                        isChecked={addData.isAutomatic}
-                        onChange={(e) => setAddData({ ...addData, isAutomatic: e.target.checked })}
+                        isChecked={addData.isDebtAutomatic}
+                        onChange={(e) => setAddData({ 
+                          ...addData, 
+                          isDebtAutomatic: e.target.checked,
+                          isAutomatic: e.target.checked // Mantener compatibilidad
+                        })}
                       />
                     </FormControl>
                     
-                    {addData.isAutomatic && (
+                    {addData.isDebtAutomatic && (
                       <FormControl>
                         <FormLabel>Check Source</FormLabel>
                         <RadioGroup
@@ -1442,12 +1429,16 @@ const calculateEstimatedTime = () => {
                         Automatic Savings
                       </FormLabel>
                       <Switch
-                        isChecked={addData.isAutomatic}
-                        onChange={(e) => setAddData({ ...addData, isAutomatic: e.target.checked })}
+                        isChecked={addData.isSavingAutomatic}
+                        onChange={(e) => setAddData({ 
+                          ...addData, 
+                          isSavingAutomatic: e.target.checked,
+                          isAutomatic: e.target.checked // Mantener compatibilidad
+                        })}
                       />
                     </FormControl>
                     
-                    {addData.isAutomatic && (
+                    {addData.isSavingAutomatic && (
                       <FormControl>
                         <FormLabel>Check Source</FormLabel>
                         <RadioGroup
@@ -1647,19 +1638,72 @@ const calculateEstimatedTime = () => {
     <Text fontWeight="bold" fontSize="3xl" color="#222" letterSpacing={0.5}>
       Personal Finance Dashboard
     </Text>
-    <Text fontSize="lg" color="#666">Welcome, {currentUser.name}!</Text>
-    
-    {/* Botón para alternar moneda */}
-    <Button 
-  size="sm" 
-  colorScheme={displayCurrency === "USD" ? "blue" : "orange"}
-  variant="outline"
-  leftIcon={displayCurrency === "USD" ? <span>$</span> : <span>COL$</span>}
-  onClick={() => setDisplayCurrency(prev => prev === "USD" ? "COP" : "USD")}
-  mt={2}
->
-  {displayCurrency === "USD" ? "Show in COP" : "Show in USD"}
-</Button>
+              <Text fontSize="lg" color="#666">Welcome, {currentUser.name}!</Text>
+          
+          {/* Botón para alternar moneda */}
+          <HStack spacing={2} mt={2} justify="center">
+            <Button 
+              size="sm" 
+              colorScheme={displayCurrency === "USD" ? "blue" : "orange"}
+              variant="outline"
+              leftIcon={displayCurrency === "USD" ? <span>$</span> : <span>COL$</span>}
+              onClick={() => setDisplayCurrency(prev => prev === "USD" ? "COP" : "USD")}
+            >
+              {displayCurrency === "USD" ? "Show in COP" : "Show in USD"}
+            </Button>
+            
+            <IconButton
+              aria-label="Recargar datos"
+              icon={<FaSync />}
+              size="sm"
+              colorScheme="green"
+              variant="outline"
+              onClick={() => {
+                try {
+                  setIsLoading(true);
+                  
+                  // Recargar datos de localStorage
+                  const savedUserData = localStorage.getItem("userData");
+                  const savedHistory = localStorage.getItem("history");
+                  const savedGoals = localStorage.getItem("goals");
+                  
+                  if (savedUserData) {
+                    setUserData(JSON.parse(savedUserData));
+                  }
+                  
+                  if (savedHistory) {
+                    setHistory(JSON.parse(savedHistory));
+                  }
+                  
+                  if (savedGoals) {
+                    setGoals(JSON.parse(savedGoals));
+                  }
+                  
+                  // Calcular datos financieros combinados
+                  const newFinancials = calculateCombinedFinancials();
+                  setCombinedFinancials(newFinancials);
+                  
+                  toast({
+                    title: "Datos actualizados",
+                    status: "success",
+                    duration: 2000,
+                    isClosable: true,
+                  });
+                } catch (error) {
+                  console.error("Error al recargar datos:", error);
+                  toast({
+                    title: "Error al actualizar",
+                    status: "error",
+                    duration: 2000,
+                    isClosable: true,
+                  });
+                } finally {
+                  setIsLoading(false);
+                }
+              }}
+              isDisabled={isLoading}
+            />
+          </HStack>
   </VStack>
 </Box>
 
@@ -2187,19 +2231,30 @@ const calculateEstimatedTime = () => {
               color={activeScreen === "together" ? palette?.button3 || "blue.500" : "gray.400"}
               _hover={{ bg: "gray.50" }}
               onClick={() => {
-                // Actualizar datos antes de cambiar de pantalla
-                const newFinancials = calculateCombinedFinancials();
-                
-                // Forzar una actualización completa de los datos
-                setUserData({
-                  ...userData,
-                  jorgie: {...userData.jorgie},
-                  gabby: {...userData.gabby}
-                });
-                
-                // Cambiar a la pantalla Together
-                setActiveScreen("together");
+                try {
+                  // Indicar que está cargando
+                  setIsLoading(true);
+                  
+                  // Llamar directamente a setActiveScreen
+                  setActiveScreen("together");
+                  
+                  // Luego actualizar los datos en el siguiente ciclo de renderizado
+                  setTimeout(() => {
+                    try {
+                      const newFinancials = calculateCombinedFinancials();
+                      setCombinedFinancials(newFinancials);
+                      setIsLoading(false);
+                    } catch (error) {
+                      console.error("Error al calcular datos:", error);
+                      setIsLoading(false);
+                    }
+                  }, 100);
+                } catch (error) {
+                  console.error("Error al cambiar a Together:", error);
+                  setIsLoading(false);
+                }
               }}
+              isDisabled={isLoading}
             >
               <VStack spacing={1}>
                 <FaUsers />
@@ -2235,13 +2290,64 @@ const calculateEstimatedTime = () => {
         <Box bg="gray.100" minH="100vh">
           {/* Header - MODIFICADO: Centrado */}
 <Box px={4} pt={8} pb={4} textAlign="center">
-  <VStack spacing={1}>
+  <VStack spacing={1} position="relative">
     <Heading fontWeight="bold" fontSize={{base: "2xl", md: "3xl"}} color="#222" letterSpacing={0.5}>
       Couple Finance <span style={{color:'#ec4899', fontSize:'0.9em', verticalAlign:'middle'}}>❤</span>
     </Heading>
     <Text fontSize="lg" color="#666">Welcome, {currentUser.name}!</Text>
     
-    {/* Quitamos el botón en la página Together */}
+    <IconButton
+      aria-label="Recargar datos"
+      icon={<FaSync />}
+      size="sm"
+      colorScheme="green"
+      variant="outline"
+      mt={2}
+      onClick={() => {
+        try {
+          setIsLoading(true);
+          
+          // Recargar datos de localStorage
+          const savedUserData = localStorage.getItem("userData");
+          const savedHistory = localStorage.getItem("history");
+          const savedGoals = localStorage.getItem("goals");
+          
+          if (savedUserData) {
+            setUserData(JSON.parse(savedUserData));
+          }
+          
+          if (savedHistory) {
+            setHistory(JSON.parse(savedHistory));
+          }
+          
+          if (savedGoals) {
+            setGoals(JSON.parse(savedGoals));
+          }
+          
+          // Calcular datos financieros combinados
+          const newFinancials = calculateCombinedFinancials();
+          setCombinedFinancials(newFinancials);
+          
+          toast({
+            title: "Datos actualizados",
+            status: "success",
+            duration: 2000,
+            isClosable: true,
+          });
+        } catch (error) {
+          console.error("Error al recargar datos:", error);
+          toast({
+            title: "Error al actualizar",
+            status: "error",
+            duration: 2000,
+            isClosable: true,
+          });
+        } finally {
+          setIsLoading(false);
+        }
+      }}
+      isDisabled={isLoading}
+    />
   </VStack>
           </Box>
           
@@ -2486,22 +2592,30 @@ const calculateEstimatedTime = () => {
                 color={palette?.button3 || "blue.500"}
                 _hover={{ bg: "gray.50" }}
                 onClick={() => {
-                  // No hacer nada si ya estamos en Together
-                  if (activeScreen === "together") return;
-                  
-                  // Actualizar datos antes de cambiar de pantalla
-                  const newFinancials = calculateCombinedFinancials();
-                  
-                  // Forzar una actualización completa de los datos
-                  setUserData({
-                    ...userData,
-                    jorgie: {...userData.jorgie},
-                    gabby: {...userData.gabby}
-                  });
-                  
-                  // Cambiar a la pantalla Together
-                  setActiveScreen("together");
+                  try {
+                    // Indicar que está cargando
+                    setIsLoading(true);
+                    
+                    // Llamar directamente a setActiveScreen
+                    setActiveScreen("together");
+                    
+                    // Luego actualizar los datos en el siguiente ciclo de renderizado
+                    setTimeout(() => {
+                      try {
+                        const newFinancials = calculateCombinedFinancials();
+                        setCombinedFinancials(newFinancials);
+                        setIsLoading(false);
+                      } catch (error) {
+                        console.error("Error al calcular datos:", error);
+                        setIsLoading(false);
+                      }
+                    }, 100);
+                  } catch (error) {
+                    console.error("Error al cambiar a Together:", error);
+                    setIsLoading(false);
+                  }
                 }}
+                isDisabled={isLoading}
               >
                 <VStack spacing={1}>
                   <FaUsers size={18} />
